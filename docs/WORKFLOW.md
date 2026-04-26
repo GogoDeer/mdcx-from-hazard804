@@ -1,350 +1,202 @@
-# Git + Jujutsu (jj) Development Workflow
+# Development Workflow
 
-> Last updated: 2026-04-26
+> Last updated: 2026-04-27
 
-This project uses a hybrid **Git + Jujutsu (jj)** workflow to keep our fork clean and easy to upstream.  
-**New to jj?** Think of it as Git with an undo button for *everything* and a commit graph that stays tidy automatically.
+A pure-Git fork workflow for contributing to MDCx.
 
 ---
 
-## Core Concept: Two Worlds, One Repo
+## Branches
 
 ```
-upstream/master  ──────────────────────────────────────●  (original MDCx, never touched)
-                                                        │
-our dev stack                                           ●  feat: add skill column
-                                                        │
-                                                        ●  feat: fix reward interface  ← dev
-                                                        │
-                                                        @  (your working copy)
+upstream/master  ───────────────────●  (original MDCx, never touched)
+                                     \
+origin/master  ─────────────────────●  (your fork's mirror, always identical)
+                                     \
+origin/dev  ────────────────────────●  feat: javstash scraper
+                                     │
+                                     ●  docs: planning artifacts
+                                     │
+                                     ●  (your latest work)
 ```
 
-| Bookmark | Meaning |
+| Branch | Purpose |
 | :--- | :--- |
 | `master` | Mirrors `upstream/master` — 100% original code |
-| `dev` | Tip of our fork — always rebased on top of `master` |
-| `@` | Your current working copy (jj's version of HEAD) |
+| `dev` | Your full workspace — code, tests, `.planning/`, docs |
+| `pr-*` | Temporary clean branches for Pull Requests (code only) |
 
 ---
 
 ## One-Time Setup
 
-```bash
-# 1. Add the upstream remote (skip if already done)
+```powershell
+# Add the upstream remote
 git remote add upstream https://github.com/Hazard804/mdcx.git
 
-# 2. Initialize jj on the existing git repo
-jj git init --git-repo .
-
-# 3. Point master at upstream so jj always knows the source of truth
-jj git fetch --remote upstream
-jj bookmark track master --remote upstream
+# Ensure line endings are always LF (matches upstream)
+git config core.autocrlf input
 ```
 
 ---
 
 ## Daily Workflow
 
-### Start a new task
-
-```bash
-jj new dev -m "feat: description of task"
-jj bookmark set dev          # slide the dev pointer up to your new change
-```
-
-> **Why `jj bookmark set dev`?**  
-> `dev` is just a label. After `jj new`, you are *above* it. Moving the label up means "dev now means this new work."
-
-### Save your progress (no staging needed)
-
-Unlike Git, jj tracks all file changes automatically. There is **no `git add`**. Just describe what you did:
-
-```bash
-jj describe -m "wip: adjusted column offsets"
-```
-
-To start a fresh change on top (like `git commit && git checkout -b next`):
-
-```bash
-jj new -m "next step description"
-```
-
-### Sync with upstream
-
-```bash
-jj git fetch --remote upstream          # pull new upstream commits
-jj rebase -s dev -d master              # replay our stack on top of the new master
-```
-
-### Sharing with GitHub (Pushing)
-
-Before your first push, you must tell `jj` to track your local bookmark:
+### 1. Sync with upstream and rebase dev
 
 ```powershell
-jj bookmark track dev --remote=origin   # do this once
-jj git push --remote origin             # push your progress
+# Update master
+git checkout master
+git pull upstream master
+git push origin master
+
+# Rebase dev on top of the new master
+git checkout dev
+git rebase master
+git push --force-with-lease origin dev
 ```
 
-> **Safety Note:** If you've already pushed and want to "clean up" your commits, use `jj restore` (see Troubleshooting) instead of `jj squash` to avoid "Immutable Commit" errors.
+> **Why rebase?** Keeps `dev` as a clean linear stack on top of `master` —
+> no merge commits. `--force-with-lease` is safe because only you use this fork.
 
-# Optional: keep your GitHub fork's master in sync too
-jj git push --remote origin --bookmark master
+### 2. Work on dev
+
+```powershell
+git checkout dev
+
+# ... do your work ...
+
+git add .
+git commit -m "feat: implement javstash scraper"
+git push --force-with-lease origin dev
 ```
 
-> **Conflict during rebase?** jj marks the conflict in the file but lets you keep working.  
-> Fix the file, then run `jj describe` (no extra command needed — jj auto-detects resolution).
+> **Tip:** Commit everything together — code, tests, `.planning/`, docs.
+> The separation happens only when you create a PR.
 
-### Undo anything
+When a milestone is complete, **tag it** before starting the next one:
 
-```bash
-jj undo          # revert the last jj operation — works on rebases, squashes, everything
+```powershell
+git tag vM1    # snapshot of dev at the end of milestone 1
 ```
 
----
+> **Why tag?** If M1 and M2 both modify `mdcx/config/enums.py`, you need a
+> way to grab the M1-only version. The tag preserves that exact state.
 
-## Viewing the Stack (`jj log`)
+### 3. Create a clean PR (code only)
 
-`jj log` is the most important command. Run it often.
+When a feature is ready to submit upstream, use either method:
 
-```
-@  wvqtpowu user@host 2 minutes ago
-│  feat: add compatibility column
-○  qvnkszrt user@host 1 hour ago
-│  feat: fix reward interface columns    ← dev
-○  zxoulstr user@host 3 hours ago
-│  (empty) (this is master)
-◆  upstream/master
-```
+#### Method A: Manual cherry-pick (recommended for few files)
 
-| Symbol | Meaning |
-| :--- | :--- |
-| `@` | Your working copy (uncommitted changes live here) |
-| `○` | A committed change |
-| `◆` | A remote bookmark (upstream/master) |
+```powershell
+# Start a clean branch from master
+git checkout master
+git checkout -b pr-feature-name
 
-> **Reading the graph**: time flows *upward*. `upstream/master` is at the bottom, your latest work is at the top.
+# Cherry-pick ONLY the files you want — from the milestone TAG
+git checkout vM1 -- mdcx/crawlers/javstash.py
+git checkout vM1 -- mdcx/config/enums.py
+git checkout vM1 -- mdcx/config/models.py
+git checkout vM1 -- mdcx/crawlers/__init__.py
+git checkout vM1 -- tests/crawlers/test_javstash.py
 
----
+# Commit and push
+git commit -m "feat: implement JavStash GraphQL scraper"
+git push origin pr-feature-name
 
-## Cleaning Up: `jj squash` and `jj split`
-
-### Collapse many small changes into one
-
-```bash
-jj squash          # merge @ into its parent
+# Go back to dev
+git checkout dev
 ```
 
-Example — before squash:
-```
-@  rlmtpowu  wip: tweak offset again
-○  qvnkszrt  wip: tweak offset
-○  zxoulstr  feat: add skill column    ← dev
-```
-After `jj squash` (run twice):
-```
-@  zxoulstr  feat: add skill column    ← dev
-```
+#### Method B: `/gsd-pr-branch` (better for many files)
 
-### Separate code from planning files
+```powershell
+# Create a temporary branch from the milestone tag
+git checkout -b temp-m1 vM1
 
-```bash
-jj split           # interactively choose which files go into a new child change
-```
-
-This opens a diff view. Select only the `.planning/` files → they become a separate change, leaving your code change clean for a PR.
-
----
-
-## Creating Pull Requests
-
-### Method A: GSD (recommended)
-
-```bash
+# Let GSD auto-filter .planning/ commits
 /gsd-pr-branch
+
+# Remove non-.planning files that GSD doesn't filter
+git checkout temp-m1-pr
+git rm --cached docs/WORKFLOW.md .gitattributes 2>/dev/null
+git commit --amend --no-edit
+
+# Push and clean up
+git push origin temp-m1-pr
+git checkout dev
+git branch -d temp-m1
 ```
 
-GSD automatically filters `.planning/` files and creates a clean Git branch ready for GitHub.
+> **Method A vs B:** Method A gives you exact control over every file.
+> Method B is faster when a milestone touches many files, but you must
+> manually remove `docs/WORKFLOW.md` and `.gitattributes` since GSD only
+> auto-filters `.planning/`.
 
-### Method B: Manual push
+Then open a PR on GitHub: `pr-feature-name` (or `temp-m1-pr`) → `upstream/master`.
 
-```bash
-# Find the Change ID of your target change in jj log (e.g. "qvnk")
-jj git push --change qvnk --remote origin --branch feature-name
-# Then open a PR on GitHub from 'feature-name' → upstream/master
-```
+> **How to find the right files per milestone:**
+> Check `.planning/milestones/vM1-ROADMAP.md` — each phase plan lists
+> "Files to change/create". Or check the phase SUMMARY.md files for what
+> was actually modified.
 
-> **What does `--change qvnk` push?**  
-> It pushes the *cumulative* state at that point — master + everything below `qvnk` in the stack. Changes *above* `qvnk` are not included.
-
----
-
-## Quick Reference
-
-| Task | Command |
-| :--- | :--- |
-| See the stack | `jj log` |
-| Start a new change | `jj new -m "message"` |
-| Describe / rename current change | `jj describe -m "message"` |
-| Merge current change into parent | `jj squash` |
-| Split one change into two | `jj split` |
-| Undo last operation | `jj undo` |
-| Fetch upstream + rebase | `jj git fetch --remote upstream && jj rebase -s dev -d master` |
-| Show what changed in a change | `jj diff --change CHANGE_ID` |
-| Jump to a specific change | `jj edit CHANGE_ID` |
-
-### 4. Noise in PR Diffs (Line Endings)
-**Issue:** GitHub shows 200+ files changed even if you only edited 5.  
-**Reason:** The upstream uses **LF** (Unix) but your local commit has **CRLF** (Windows).  
-**Fix:** Do **not** commit a global renormalization. Instead, use the **Selective Restore** technique below to create a clean PR branch.
-
----
-
-## Pro Tip: The "Selective Restore" (Clean PRs)
-
-If your local `dev` branch gets "messy" (with line-ending noise or planning files), use this to create a perfect Pull Request:
+### 4. After PR is merged
 
 ```powershell
-# 1. Start a fresh change from the original master
-jj new master -m "feat: my clean logic changes"
+# Same as step 1: sync master and rebase dev
+git checkout master
+git pull upstream master
+git push origin master
 
-# 2. Pick ONLY the files you actually wrote/edited from your messy dev branch
-# This ignores all the line-ending noise in other files!
-jj restore --from dev mdcx/crawlers/my_new_file.py mdcx/config/enums.py
+git checkout dev
+git rebase master
+git push --force-with-lease origin dev
 
-# 3. Push this clean commit as your PR branch
-jj bookmark set pr-feature-name -r "@"
-jj git push --remote origin --bookmark pr-feature-name
+# Clean up the PR branch
+git branch -d pr-feature-name
+git push origin --delete pr-feature-name
 ```
 
 ---
 
-## Windows Setup (Do this once)
+## Troubleshooting
 
-To avoid line-ending headaches in the future, run these in your repo:
-1. `git config core.autocrlf input`
-2. Never commit a `.gitattributes` file unless the maintainers explicitly ask for it.
+### Line-ending noise in PR diffs
 
----
+**Symptom:** GitHub shows hundreds of files changed even though you only edited a few.
 
-## Git Syncing: Troubleshooting Stuck Files
+**Cause:** Your local files have CRLF (Windows) but upstream expects LF (Unix).
 
-**Issue:** A file is visible in `jj log` but `git status` shows it as "untracked," or it's missing on GitHub after a push.  
-**Fix:** Explicitly stage the file in Git and re-import:
+**Fix:**
 ```powershell
-git add .gitattributes   # (or whichever file is stuck)
-jj git import
+# Ensure autocrlf is set (one-time)
+git config core.autocrlf input
+
+# If files are already wrong, renormalize:
+git add --renormalize .
+git commit -m "chore: normalize line endings"
 ```
-This "forces" the two systems to agree on the file's state.
 
----
+### Accidentally committed .planning/ files to a PR branch
 
-## Practical Examples for New Users
-
-### Example 1: Making your first change
-
-```bash
-# Make sure dev is up to date
-jj git fetch --remote upstream
-jj rebase -s dev -d master
-
-# Start your work
-jj new dev -m "feat: show skill column in expedition UI"
-jj bookmark set dev
-
-# ... edit files in your editor ...
-
-# Check what jj sees (no staging needed)
-jj diff
-
-# Rename the change with a better message
-jj describe -m "feat: add skill column to expedition interface"
-
-# Start the next task
-jj new -m "feat: next thing"
-jj bookmark set dev
+```powershell
+git rm -r --cached .planning/
+git rm --cached docs/WORKFLOW.md
+git rm --cached .gitattributes
+git commit -m "chore: remove non-upstream files from PR"
+git push origin pr-feature-name
 ```
 
 ---
 
-### Example 2: Sequential milestones (Foundation → Walls)
+## Files That Should Never Be in a PR
 
-```bash
-# ── Milestone 1: Foundation ──────────────────────────────────
-jj new dev -m "milestone 1: foundation"
-jj bookmark set dev
-# ... GSD runs, makes git commits, jj imports them automatically ...
-jj log       # you'll see multiple small changes above dev
-jj squash    # collapse GSD's micro-commits into one clean Foundation node
+These files exist in `dev` but must **never** appear in a PR to upstream:
 
-# ── Milestone 2: Walls ───────────────────────────────────────
-jj new dev -m "milestone 2: walls"
-jj bookmark set dev
-```
+- `.planning/` — GSD planning artifacts
+- `docs/WORKFLOW.md` — this workflow document
+- `.gitattributes` — local line-ending enforcement
 
-Stack after both milestones:
-```
-@  ●  milestone 2: walls   ← dev
-   │
-   ●  milestone 1: foundation
-   │
-◆  upstream/master
-```
-
----
-
-### Example 3: Submit M1 as a PR while M2 is in progress
-
-```bash
-jj log
-# Output shows:
-#   @  ●  milestone 2: walls     ← dev
-#      │
-#      ○  qvnk  milestone 1: foundation
-#      │
-#   ◆  upstream/master
-
-# Step 1: separate .planning files from code in M1
-jj split qvnk
-# In the interactive view, select only .planning/ files for the second change.
-# Result:
-#   ○  NEW_ID  milestone 1: planning files
-#   ○  CODE_ID milestone 1: foundation (code only)
-
-# Step 2: push just the code change to your fork
-jj git push --change CODE_ID --remote origin --branch pr-foundation
-
-# Step 3: open PR on GitHub: pr-foundation → upstream/master
-```
-
----
-
-### Example 4: Upstream released a new version (sync + rebase)
-
-```bash
-jj git fetch --remote upstream
-jj log
-# You'll see upstream/master moved ahead of your stack base.
-
-jj rebase -s dev -d master
-# jj replays your entire dev stack on top of the new master.
-# If there are conflicts, fix the marked files, then:
-jj describe   # (or jj new) — jj auto-detects that conflicts are resolved
-```
-
----
-
-## GSD + jj Compatibility Notes
-
-| Situation | What happens |
-| :--- | :--- |
-| GSD makes a Git commit | jj imports it automatically — run `jj log` to see it |
-| `/gsd-pr-branch` creates a branch | A new bookmark appears in `jj log` — safe to delete after PR merges (`jj bookmark delete branch-name`) |
-| GSD commits mix code + `.planning/` | Use `jj split` to separate them before creating a PR |
-
----
-
-## Managing `.planning/` Files
-
-- Keep `.planning/` changes in their own jj change whenever possible.
-- Use `jj split` to extract `.planning/` changes if they got mixed with code.
-- Never include `.planning/` in PRs to the original repo — use Method A (GSD) or manually exclude them with `jj split`.
+When creating a PR branch, only `git checkout <tag> -- <file>` the specific
+source code and test files you want to submit.
