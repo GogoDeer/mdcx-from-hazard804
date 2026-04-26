@@ -5,7 +5,7 @@ from datetime import timedelta
 from functools import lru_cache
 from typing import TYPE_CHECKING, Any, Literal, cast
 
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator, model_validator
 from pydantic.fields import FieldInfo
 
 from ..gen.field_enums import CrawlerResultFields
@@ -128,6 +128,7 @@ SCRAPING_TYPE_SITE_FIELDS = {
 
 DEFAULT_FIELD_SITE_PRIORITY = [
     Website.THEPORNDB,
+    Website.JAVSTASH,
     Website.DMM,
     Website.OFFICIAL,
     Website.MGSTAGE,
@@ -426,6 +427,9 @@ class Config(BaseModel):
         },
         title="字段配置",
     )
+        },
+        title="字段配置",
+    )
     type_field_configs: dict[FixedScrapingType, dict[CrawlerResultFields, FieldPriorityConfig]] = Field(
         default_factory=dict,
         title="按类型字段优先级",
@@ -614,6 +618,8 @@ class Config(BaseModel):
     timeout: int = Field(default=10, title="超时")
     retry: int = Field(default=3, title="重试")
     theporndb_api_token: str = Field(default="", title="Theporndb API令牌")
+    javstash_api_key: str = Field(default="", title="StashAPI 令牌")
+    javstash_url: str = Field(default="https://javstash.org", title="StashAPI 地址")
     javdb: str = Field(default="", title="Javdb")
     fc2ppvdb: str = Field(default="", title="FC2PPVDB")
     javbus: str = Field(default="", title="Javbus")
@@ -823,6 +829,29 @@ class Config(BaseModel):
             Config._convert_field_configs(d)
 
         return warnings
+
+    @model_validator(mode="after")
+    def _validate_javstash_connection(self) -> "Config":
+        url = (self.javstash_url or "").strip().rstrip("/")
+        if url:
+            self.javstash_url = url
+        api_key = self.javstash_api_key
+        if url and api_key:
+            try:
+                import urllib.request
+
+                req = urllib.request.Request(
+                    f"{url}/graphql",
+                    data=b'{"query":"{__typename}"}',
+                    headers={"ApiKey": api_key, "Content-Type": "application/json"},
+                    method="POST",
+                )
+                urllib.request.urlopen(req, timeout=5)
+            except Exception:
+                import logging
+
+                logging.getLogger(__name__).warning("StashAPI 连接验证失败: %s", url)
+        return self
 
     @staticmethod
     def _convert_field_configs(d):
