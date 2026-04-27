@@ -516,6 +516,7 @@ class ManualConfig:
         "fantastica": Website.FANTASTICA,
         "theporndb": Website.THEPORNDB,
         "prestige": Website.PRESTIGE,
+        "javstash": Website.JAVSTASH,
     }
     CHAR_LIST = [
         "[高清] (中文字幕)",

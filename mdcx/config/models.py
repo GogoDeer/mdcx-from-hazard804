@@ -1,3 +1,4 @@
+import logging
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -10,6 +11,13 @@ from pydantic.fields import FieldInfo
 
 from ..gen.field_enums import CrawlerResultFields
 from ..manual import ManualConfig
+<<<<<<< HEAD
+||||||| parent of 6d858bc (docs: add Chinese comments to crawler types)
+from ..server.config import SAFE_DIRS
+=======
+from ..server.config import SAFE_DIRS
+from ..utils.javstash_utils import verify_javstash_connection_sync
+>>>>>>> 6d858bc (docs: add Chinese comments to crawler types)
 from .enums import (
     CDChar,
     CleanAction,
@@ -405,6 +413,7 @@ class Config(BaseModel):
 
     field_configs: dict[CrawlerResultFields, FieldConfig] = Field(
         default_factory=lambda: {
+<<<<<<< HEAD
             CrawlerResultFields.TITLE: default_field_config(language=Language.ZH_CN),
             CrawlerResultFields.ORIGINALTITLE: default_field_config(),
             CrawlerResultFields.OUTLINE: default_field_config(language=Language.ZH_CN),
@@ -424,6 +433,199 @@ class Config(BaseModel):
             CrawlerResultFields.RUNTIME: default_field_config(),
             CrawlerResultFields.SCORE: default_field_config(),
             CrawlerResultFields.WANTED: default_field_config(),
+||||||| parent of 6d858bc (docs: add Chinese comments to crawler types)
+            CrawlerResultFields.TITLE: FieldConfig(
+                site_prority=[Website.THEPORNDB, Website.JAVSTASH, Website.OFFICIAL, Website.DMM, Website.JAVDB, Website.AVBASE],
+                language=Language.JP,
+            ),
+            CrawlerResultFields.ORIGINALTITLE: FieldConfig(
+                site_prority=[Website.THEPORNDB, Website.JAVSTASH, Website.OFFICIAL, Website.DMM, Website.JAVDB, Website.AVBASE],
+            ),
+            CrawlerResultFields.OUTLINE: FieldConfig(
+                site_prority=[Website.THEPORNDB, Website.JAVSTASH, Website.OFFICIAL, Website.DMM, Website.JAVDB, Website.AVBASE],
+                language=Language.JP,
+            ),
+            CrawlerResultFields.ORIGINALPLOT: FieldConfig(
+                site_prority=[Website.THEPORNDB, Website.JAVSTASH, Website.OFFICIAL, Website.DMM, Website.JAVDB, Website.AVBASE],
+            ),
+            CrawlerResultFields.ACTORS: FieldConfig(
+                site_prority=[Website.THEPORNDB, Website.JAVSTASH, Website.OFFICIAL, Website.DMM, Website.JAVDB, Website.AVBASE],
+                language=Language.JP,
+            ),
+            CrawlerResultFields.ALL_ACTORS: FieldConfig(
+                site_prority=[Website.THEPORNDB, Website.JAVSTASH, Website.JAVDB, Website.AVBASE],
+                language=Language.JP,
+            ),
+            CrawlerResultFields.TAGS: FieldConfig(
+                site_prority=[Website.THEPORNDB, Website.JAVSTASH, Website.OFFICIAL, Website.DMM, Website.JAVDB, Website.AVBASE],
+                language=Language.ZH_CN,
+            ),
+            CrawlerResultFields.DIRECTORS: FieldConfig(
+                site_prority=[Website.THEPORNDB, Website.OFFICIAL, Website.DMM, Website.JAVDB, Website.AVBASE],
+                language=Language.JP,
+            ),
+            CrawlerResultFields.SERIES: FieldConfig(
+                site_prority=[Website.THEPORNDB, Website.OFFICIAL, Website.DMM, Website.JAVDB, Website.AVBASE],
+                language=Language.JP,
+            ),
+            CrawlerResultFields.STUDIO: FieldConfig(
+                site_prority=[Website.THEPORNDB, Website.JAVSTASH, Website.OFFICIAL, Website.DMM, Website.JAVDB, Website.AVBASE],
+                language=Language.JP,
+            ),
+            CrawlerResultFields.PUBLISHER: FieldConfig(
+                site_prority=[Website.THEPORNDB, Website.JAVSTASH, Website.OFFICIAL, Website.DMM, Website.JAVDB, Website.AVBASE],
+                language=Language.JP,
+            ),
+            CrawlerResultFields.THUMB: FieldConfig(site_prority=[Website.THEPORNDB, Website.JAVSTASH, Website.DMM, Website.AVBASE]),
+            CrawlerResultFields.POSTER: FieldConfig(site_prority=[Website.THEPORNDB, Website.JAVSTASH, Website.DMM, Website.AVBASE]),
+            CrawlerResultFields.EXTRAFANART: FieldConfig(site_prority=[Website.THEPORNDB, Website.DMM, Website.AVBASE]),
+            CrawlerResultFields.TRAILER: FieldConfig(
+                site_prority=[Website.THEPORNDB, Website.OFFICIAL, Website.DMM, Website.JAVDB, Website.AVBASE]
+            ),
+            CrawlerResultFields.RELEASE: FieldConfig(
+                site_prority=[Website.THEPORNDB, Website.JAVSTASH, Website.OFFICIAL, Website.DMM, Website.JAVDB, Website.AVBASE]
+            ),
+            CrawlerResultFields.RUNTIME: FieldConfig(
+                site_prority=[Website.THEPORNDB, Website.JAVSTASH, Website.OFFICIAL, Website.DMM, Website.JAVDB, Website.AVBASE]
+            ),
+            CrawlerResultFields.SCORE: FieldConfig(
+                site_prority=[Website.THEPORNDB, Website.DMM, Website.JAVDB, Website.AVBASE]
+            ),
+            CrawlerResultFields.WANTED: FieldConfig(site_prority=[Website.DMM, Website.JAVDB, Website.AVBASE]),
+=======
+            CrawlerResultFields.TITLE: FieldConfig(
+                site_prority=[
+                    Website.THEPORNDB,
+                    Website.JAVSTASH,
+                    Website.OFFICIAL,
+                    Website.DMM,
+                    Website.JAVDB,
+                    Website.AVBASE,
+                ],
+                language=Language.JP,
+            ),
+            CrawlerResultFields.ORIGINALTITLE: FieldConfig(
+                site_prority=[
+                    Website.THEPORNDB,
+                    Website.JAVSTASH,
+                    Website.OFFICIAL,
+                    Website.DMM,
+                    Website.JAVDB,
+                    Website.AVBASE,
+                ],
+            ),
+            CrawlerResultFields.OUTLINE: FieldConfig(
+                site_prority=[
+                    Website.THEPORNDB,
+                    Website.JAVSTASH,
+                    Website.OFFICIAL,
+                    Website.DMM,
+                    Website.JAVDB,
+                    Website.AVBASE,
+                ],
+                language=Language.JP,
+            ),
+            CrawlerResultFields.ORIGINALPLOT: FieldConfig(
+                site_prority=[
+                    Website.THEPORNDB,
+                    Website.JAVSTASH,
+                    Website.OFFICIAL,
+                    Website.DMM,
+                    Website.JAVDB,
+                    Website.AVBASE,
+                ],
+            ),
+            CrawlerResultFields.ACTORS: FieldConfig(
+                site_prority=[
+                    Website.THEPORNDB,
+                    Website.JAVSTASH,
+                    Website.OFFICIAL,
+                    Website.DMM,
+                    Website.JAVDB,
+                    Website.AVBASE,
+                ],
+                language=Language.JP,
+            ),
+            CrawlerResultFields.ALL_ACTORS: FieldConfig(
+                site_prority=[Website.THEPORNDB, Website.JAVSTASH, Website.JAVDB, Website.AVBASE],
+                language=Language.JP,
+            ),
+            CrawlerResultFields.TAGS: FieldConfig(
+                site_prority=[
+                    Website.THEPORNDB,
+                    Website.JAVSTASH,
+                    Website.OFFICIAL,
+                    Website.DMM,
+                    Website.JAVDB,
+                    Website.AVBASE,
+                ],
+                language=Language.ZH_CN,
+            ),
+            CrawlerResultFields.DIRECTORS: FieldConfig(
+                site_prority=[Website.THEPORNDB, Website.OFFICIAL, Website.DMM, Website.JAVDB, Website.AVBASE],
+                language=Language.JP,
+            ),
+            CrawlerResultFields.SERIES: FieldConfig(
+                site_prority=[Website.THEPORNDB, Website.OFFICIAL, Website.DMM, Website.JAVDB, Website.AVBASE],
+                language=Language.JP,
+            ),
+            CrawlerResultFields.STUDIO: FieldConfig(
+                site_prority=[
+                    Website.THEPORNDB,
+                    Website.JAVSTASH,
+                    Website.OFFICIAL,
+                    Website.DMM,
+                    Website.JAVDB,
+                    Website.AVBASE,
+                ],
+                language=Language.JP,
+            ),
+            CrawlerResultFields.PUBLISHER: FieldConfig(
+                site_prority=[
+                    Website.THEPORNDB,
+                    Website.JAVSTASH,
+                    Website.OFFICIAL,
+                    Website.DMM,
+                    Website.JAVDB,
+                    Website.AVBASE,
+                ],
+                language=Language.JP,
+            ),
+            CrawlerResultFields.THUMB: FieldConfig(
+                site_prority=[Website.THEPORNDB, Website.JAVSTASH, Website.DMM, Website.AVBASE]
+            ),
+            CrawlerResultFields.POSTER: FieldConfig(
+                site_prority=[Website.THEPORNDB, Website.JAVSTASH, Website.DMM, Website.AVBASE]
+            ),
+            CrawlerResultFields.EXTRAFANART: FieldConfig(site_prority=[Website.THEPORNDB, Website.DMM, Website.AVBASE]),
+            CrawlerResultFields.TRAILER: FieldConfig(
+                site_prority=[Website.THEPORNDB, Website.OFFICIAL, Website.DMM, Website.JAVDB, Website.AVBASE]
+            ),
+            CrawlerResultFields.RELEASE: FieldConfig(
+                site_prority=[
+                    Website.THEPORNDB,
+                    Website.JAVSTASH,
+                    Website.OFFICIAL,
+                    Website.DMM,
+                    Website.JAVDB,
+                    Website.AVBASE,
+                ]
+            ),
+            CrawlerResultFields.RUNTIME: FieldConfig(
+                site_prority=[
+                    Website.THEPORNDB,
+                    Website.JAVSTASH,
+                    Website.OFFICIAL,
+                    Website.DMM,
+                    Website.JAVDB,
+                    Website.AVBASE,
+                ]
+            ),
+            CrawlerResultFields.SCORE: FieldConfig(
+                site_prority=[Website.THEPORNDB, Website.DMM, Website.JAVDB, Website.AVBASE]
+            ),
+            CrawlerResultFields.WANTED: FieldConfig(site_prority=[Website.DMM, Website.JAVDB, Website.AVBASE]),
+>>>>>>> 6d858bc (docs: add Chinese comments to crawler types)
         },
         title="字段配置",
     )
@@ -618,8 +820,8 @@ class Config(BaseModel):
     timeout: int = Field(default=10, title="超时")
     retry: int = Field(default=3, title="重试")
     theporndb_api_token: str = Field(default="", title="Theporndb API令牌")
-    javstash_api_key: str = Field(default="", title="StashAPI 令牌")
-    javstash_url: str = Field(default="https://javstash.org", title="StashAPI 地址")
+    javstash_api_key: str = Field(default="", title="JavStash API密钥")
+    javstash_url: str = Field(default="https://javstash.org", title="JavStash 地址")
     javdb: str = Field(default="", title="Javdb")
     fc2ppvdb: str = Field(default="", title="FC2PPVDB")
     javbus: str = Field(default="", title="Javbus")
@@ -727,6 +929,10 @@ class Config(BaseModel):
 
     def get_site_url(self, site: Website, default: str = "") -> str:
         """获取指定网站的用户自定义 URL, 结尾无斜杠."""
+        # JavStash (Stash-Box) 允许用户自建实例且需要 API Key 进行认证，
+        # 因为 SiteConfig 无法存储 API Key，因此使用独立字段
+        if site == Website.JAVSTASH:
+            return (self.javstash_url or "").strip().rstrip("/")
         return str(self.get_site_config(site).custom_url or default).rstrip("/")
 
     def get_field_config(self, field: CrawlerResultFields) -> FieldConfig:
@@ -837,20 +1043,9 @@ class Config(BaseModel):
             self.javstash_url = url
         api_key = self.javstash_api_key
         if url and api_key:
-            try:
-                import urllib.request
-
-                req = urllib.request.Request(
-                    f"{url}/graphql",
-                    data=b'{"query":"{__typename}"}',
-                    headers={"ApiKey": api_key, "Content-Type": "application/json"},
-                    method="POST",
-                )
-                urllib.request.urlopen(req, timeout=5)
-            except Exception:
-                import logging
-
-                logging.getLogger(__name__).warning("StashAPI 连接验证失败: %s", url)
+            success, msg = verify_javstash_connection_sync(url, api_key)
+            if not success:
+                logging.getLogger(__name__).warning(msg)
         return self
 
     @staticmethod

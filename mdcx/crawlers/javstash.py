@@ -34,18 +34,23 @@ class StashGraphQLCrawler(BaseCrawler):
         headers = {
             "ApiKey": self.api_key,
             "Content-Type": "application/json",
+            "Accept": "application/json",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36"
         }
-        url = f"{self.base_url}/graphql"
+        url = f"{self.base_url.rstrip('/')}/graphql"
+        ctx.debug(f"GraphQL 请求 URL: {url}")
         json_data = {"query": query, "variables": variables}
 
         data, error = await self.async_client.post_json(url, json_data=json_data, headers=headers)
 
         if error:
+            ctx.debug(f"GraphQL 请求异常: {error}")
             raise CralwerException(f"GraphQL 请求失败: {error}")
 
         if not data or "data" not in data:
             errors = data.get("errors") if data else None
             error_msg = errors[0].get("message") if errors else "未知错误"
+            ctx.debug(f"GraphQL 返回错误: {error_msg}")
             raise CralwerException(f"GraphQL 返回错误: {error_msg}")
 
         return data["data"]
@@ -60,85 +65,68 @@ class StashGraphQLCrawler(BaseCrawler):
     def base_url_(cls) -> str:
         return "https://javstash.org"
 
-    FIND_BY_HASH_QUERY = """
-    query($checksum: String, $oshash: String) {
-      findSceneByHash(input: {checksum: $checksum, oshash: $oshash}) {
-        id
-        title
-        code
-        details
-        date
-        urls
-        studio { name }
-        tags { name }
-        performers {
+    SCENE_FRAGMENT = """
+    fragment SceneFragment on Scene {
+      id
+      title
+      code
+      details
+      director
+      date
+      duration
+      urls {
+        url
+      }
+      images {
+        url
+      }
+      studio {
+        name
+      }
+      tags {
+        name
+      }
+      performers {
+        as
+        performer {
           name
           gender
-          image_path
-        }
-        files {
-          duration
-        }
-        paths {
-          screenshot
+          images {
+            url
+          }
         }
       }
     }
     """
+
+    FIND_BY_HASH_QUERY = """
+    query FindScenesByHash($oshash: String, $checksum: String) {
+      findScenesBySceneFingerprints(fingerprints: [
+        { algorithm: OSHASH, hash: $oshash },
+        { algorithm: MD5, hash: $checksum }
+      ]) {
+        ...SceneFragment
+      }
+    }
+    """ + SCENE_FRAGMENT
 
     FIND_BY_NUMBER_QUERY = """
-    query($q: String!) {
-      findScenes(filter: {q: $q, per_page: 5}) {
+    query FindScenes($q: String) {
+      findScenes(scene_filter: { text: $q }) {
         scenes {
-          id
-          title
-          code
-          details
-          date
-          urls
-          studio { name }
-          tags { name }
-          performers {
-            name
-            gender
-            image_path
-          }
-          files {
-            duration
-          }
-          paths {
-            screenshot
-          }
+          ...SceneFragment
         }
       }
     }
-    """
+    """ + SCENE_FRAGMENT
 
     FIND_BY_ID_QUERY = """
-    query($id: ID!) {
+    query FindScene($id: ID!) {
       findScene(id: $id) {
-        id
-        title
-        code
-        details
-        date
-        urls
-        studio { name }
-        tags { name }
-        performers {
-          name
-          gender
-          image_path
-        }
-        files {
-          duration
-        }
-        paths {
-          screenshot
-        }
+        ...SceneFragment
       }
     }
-    """
+    """ + SCENE_FRAGMENT
 
     @override
     async def _run(self, ctx: Context) -> CrawlerData:
@@ -147,13 +135,15 @@ class StashGraphQLCrawler(BaseCrawler):
         # 1. Direct ID lookup via appoint_url
         if ctx.input.appoint_url:
             import re
-
-            match = re.search(r"/scenes/(\d+)", ctx.input.appoint_url)
+            # Stash-box IDs are UUIDs, not just digits
+            match = re.search(r"/scenes/([a-f0-9-]+)", ctx.input.appoint_url, re.I)
             if match:
                 scene_id = match.group(1)
                 ctx.debug(f"通过 URL 解析到 ID: {scene_id}")
                 data = await self._post_graphql(ctx, self.FIND_BY_ID_QUERY, {"id": scene_id})
                 scene = data.get("findScene")
+                if scene:
+                    ctx.debug(f"通过 ID 查找到场景: {scene.get('title')}")
 
         # 2. Hash lookup
         if not scene and ctx.input.file_path:
@@ -163,7 +153,9 @@ class StashGraphQLCrawler(BaseCrawler):
                 data = await self._post_graphql(
                     ctx, self.FIND_BY_HASH_QUERY, {"oshash": oshash_value, "checksum": None}
                 )
-                scene = data.get("findSceneByHash")
+                scenes = data.get("findScenesBySceneFingerprints", [])
+                if scenes:
+                    scene = scenes[0]
             except Exception as e:
                 ctx.debug(f"⚠️ oshash 计算失败，跳过哈希搜索: {e}")
 
@@ -186,15 +178,18 @@ class StashGraphQLCrawler(BaseCrawler):
         details = scene.get("details", "")
         release = scene.get("date", "")
         year = release[:4] if release else ""
+        # Studio
         studio = scene.get("studio", {}).get("name", "") if scene.get("studio") else ""
-        tags = [t["name"] for t in scene.get("tags", [])]
-        screenshot = scene.get("paths", {}).get("screenshot", "")
 
-        # Duration to runtime (minutes)
-        duration = None
-        files = scene.get("files", [])
-        if files and files[0].get("duration"):
-            duration = files[0]["duration"]
+        # Tags
+        tags = [t["name"] for t in scene.get("tags", [])]
+
+        # Images (Stash-box uses a list of images)
+        images = scene.get("images", [])
+        screenshot = images[0].get("url", "") if images else ""
+
+        # Duration (top-level field in Stash-box)
+        duration = scene.get("duration")
 
         runtime = ""
         if duration:
@@ -203,14 +198,29 @@ class StashGraphQLCrawler(BaseCrawler):
             except (ValueError, TypeError):
                 pass
 
-        # Performers
-        performers = scene.get("performers", [])
-        all_actors = [p["name"] for p in performers]
-        actors = [p["name"] for p in performers if p.get("gender") != "MALE"]
+        # Performers (Stash-box uses PerformerAppearance)
+        performers_data = scene.get("performers", [])
+        all_actors = []
+        actors = []
+        actor_photo = {}
+        all_actor_photo = {}
 
-        # Photos
-        actor_photo = {p["name"]: p.get("image_path", "") for p in performers if p.get("gender") != "MALE"}
-        all_actor_photo = {p["name"]: p.get("image_path", "") for p in performers}
+        for p_app in performers_data:
+            p = p_app.get("performer", {})
+            if not p:
+                continue
+            name = p.get("name", "")
+            if not name:
+                continue
+
+            all_actors.append(name)
+            p_images = p.get("images", [])
+            p_photo = p_images[0].get("url", "") if p_images else ""
+
+            if p.get("gender") != "MALE":
+                actors.append(name)
+                actor_photo[name] = p_photo
+            all_actor_photo[name] = p_photo
 
         # Construct CrawlerData
         data = CrawlerData(
@@ -229,6 +239,20 @@ class StashGraphQLCrawler(BaseCrawler):
             number=scene.get("code") or ctx.input.number,
             actors=actors,
             all_actors=all_actors,
+            directors=[scene.get("director")] if scene.get("director") else [],
+            
+            # The following fields are NOT provided by the Stash-box API.
+            # We MUST explicitly initialize them to default values (like empty strings or "0.0")
+            # to prevent the NotSupport sentinel object from leaking into the core application.
+            # If NotSupport leaks into mdcx/core/file_crawler.py, it causes AttributeError
+            # when the core attempts string operations (e.g., .replace()) on the metadata.
+            extrafanart=[],
+            score="0.0",
+            mosaic="",
+            series="",
+            wanted="",
+            trailer="",
+            
             external_id=str(scene.get("id")),
             image_download=False,
             image_cut="right",
