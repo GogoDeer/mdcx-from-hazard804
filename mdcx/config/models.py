@@ -833,15 +833,10 @@ class Config(BaseModel):
         return warnings
 
     @model_validator(mode="after")
-    def _validate_javstash_connection(self) -> "Config":
+    def _normalize_javstash_url(self) -> "Config":
         url = (self.javstash_url or "").strip().rstrip("/")
         if url:
             self.javstash_url = url
-        api_key = self.javstash_api_key
-        if url and api_key:
-            success, msg = verify_javstash_connection_sync(url, api_key)
-            if not success:
-                logging.getLogger(__name__).warning(msg)
         return self
 
     @staticmethod

@@ -169,7 +169,6 @@ def test_map_scene_performers(mock_client, stars358_scene):
 
     assert "戸田真琴" in data.actors
     assert "戸田真琴" in data.all_actors
-    assert data.actor_photo["戸田真琴"].startswith("https://")
 
 
 def test_map_scene_director(mock_client, stars358_scene):

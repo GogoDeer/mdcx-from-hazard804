@@ -1,15 +1,13 @@
-"""JavStash GraphQL scraper — Phase 1 stub.
+"""JavStash GraphQL scraper — StashBox implementation."""
 
-Full implementation in Phase 2. This skeleton registers the crawler
-so it appears in the MDCx engine and can be assigned to website lists.
-"""
-
+import re
 from typing import TYPE_CHECKING, Any, override
 
 import oshash
 
 from ..config.manager import manager
 from ..config.models import Website
+from ..utils.javstash_utils import STASH_HEADERS
 from .base import BaseCrawler, Context, CralwerException, CrawlerData
 
 if TYPE_CHECKING:
@@ -17,31 +15,21 @@ if TYPE_CHECKING:
 
 
 class StashGraphQLCrawler(BaseCrawler):
-    """Stash-box GraphQL metadata scraper (javstash.org).
-
-    Phase 1: registered but not functional — `_run` raises NotImplementedError.
-    Phase 2: implemented GraphQL transport and extraction logic.
-    """
+    """Stash-box GraphQL metadata scraper (javstash.org)."""
 
     def __init__(self, client: "AsyncWebClient", base_url: str = "", browser=None):
         super().__init__(client, base_url, browser)
-        self.api_key = manager.config.javstash_api_key
 
     async def _post_graphql(self, ctx: Context, query: str, variables: dict[str, Any]) -> dict[str, Any]:
-        if not self.api_key:
+        api_key = manager.config.javstash_api_key
+        if not api_key:
             raise CralwerException("请在设置中配置 StashAPI 令牌 (javstash_api_key)")
 
-        headers = {
-            "ApiKey": self.api_key,
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36"
-        }
+        headers = {**STASH_HEADERS, "ApiKey": api_key, "Accept": "application/json"}
         url = f"{self.base_url.rstrip('/')}/graphql"
         ctx.debug(f"GraphQL 请求 URL: {url}")
-        json_data = {"query": query, "variables": variables}
 
-        data, error = await self.async_client.post_json(url, json_data=json_data, headers=headers)
+        data, error = await self.async_client.post_json(url, json_data={"query": query, "variables": variables}, headers=headers)
 
         if error:
             ctx.debug(f"GraphQL 请求异常: {error}")
@@ -134,8 +122,6 @@ class StashGraphQLCrawler(BaseCrawler):
 
         # 1. Direct ID lookup via appoint_url
         if ctx.input.appoint_url:
-            import re
-            # Stash-box IDs are UUIDs, not just digits
             match = re.search(r"/scenes/([a-f0-9-]+)", ctx.input.appoint_url, re.I)
             if match:
                 scene_id = match.group(1)
@@ -173,66 +159,44 @@ class StashGraphQLCrawler(BaseCrawler):
         return self._map_scene(scene, ctx)
 
     def _map_scene(self, scene: dict[str, Any], ctx: Context) -> CrawlerData:
-        # Extract fields
-        title = scene.get("title", "")
-        details = scene.get("details", "")
         release = scene.get("date", "")
-        year = release[:4] if release else ""
-        # Studio
         studio = scene.get("studio", {}).get("name", "") if scene.get("studio") else ""
 
-        # Tags
-        tags = [t["name"] for t in scene.get("tags", [])]
-
-        # Images (Stash-box uses a list of images)
-        images = scene.get("images", [])
-        screenshot = images[0].get("url", "") if images else ""
-
-        # Duration (top-level field in Stash-box)
-        duration = scene.get("duration")
-
+        # Duration: Stash-box returns seconds as a number
         runtime = ""
-        if duration:
-            try:
-                runtime = str(int(float(duration) / 60))
-            except (ValueError, TypeError):
-                pass
+        try:
+            if d := scene.get("duration"):
+                runtime = str(int(float(d) / 60))
+        except (ValueError, TypeError):
+            pass
 
-        # Performers (Stash-box uses PerformerAppearance)
-        performers_data = scene.get("performers", [])
-        all_actors = []
-        actors = []
-        actor_photo = {}
-        all_actor_photo = {}
-
-        for p_app in performers_data:
-            p = p_app.get("performer", {})
-            if not p:
-                continue
+        # Performers: split by gender
+        actors: list[str] = []
+        all_actors: list[str] = []
+        for p_app in scene.get("performers", []):
+            p = p_app.get("performer") or {}
             name = p.get("name", "")
             if not name:
                 continue
-
             all_actors.append(name)
-            p_images = p.get("images", [])
-            p_photo = p_images[0].get("url", "") if p_images else ""
-
             if p.get("gender") != "MALE":
                 actors.append(name)
-                actor_photo[name] = p_photo
-            all_actor_photo[name] = p_photo
 
-        # Construct CrawlerData
-        data = CrawlerData(
+        title = scene.get("title", "")
+        details = scene.get("details", "")
+        images = scene.get("images", [])
+        screenshot = images[0].get("url", "") if images else ""
+
+        return CrawlerData(
             title=title,
             originaltitle=title,
             outline=details,
             originalplot=details,
             release=release,
-            year=year,
+            year=release[:4] if release else "",
             studio=studio,
             publisher=studio,
-            tags=tags,
+            tags=[t["name"] for t in scene.get("tags", [])],
             thumb=screenshot,
             poster=screenshot,
             runtime=runtime,
@@ -240,30 +204,18 @@ class StashGraphQLCrawler(BaseCrawler):
             actors=actors,
             all_actors=all_actors,
             directors=[scene.get("director")] if scene.get("director") else [],
-            
-            # The following fields are NOT provided by the Stash-box API.
-            # We MUST explicitly initialize them to default values (like empty strings or "0.0")
-            # to prevent the NotSupport sentinel object from leaking into the core application.
-            # If NotSupport leaks into mdcx/core/file_crawler.py, it causes AttributeError
-            # when the core attempts string operations (e.g., .replace()) on the metadata.
+            # Fields not provided by Stash-box: set to explicit defaults so the
+            # NOT_SUPPORT sentinel never leaks into downstream string operations.
             extrafanart=[],
             score="0.0",
             mosaic="",
             series="",
             wanted="",
             trailer="",
-            
             external_id=str(scene.get("id")),
             image_download=False,
             source=self.site().value,
         )
-
-        # Attach dynamic attributes for v1 compat / downstream use
-        # (The planner noted these are checked by the v1_compat layer or other consumers)
-        data.actor_photo = actor_photo
-        data.all_actor_photo = all_actor_photo
-
-        return data
 
     # The following abstract methods are required by GenericBaseCrawler
     # but since _run is overridden, they will never be called.
