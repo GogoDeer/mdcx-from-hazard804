@@ -255,7 +255,6 @@ class StashGraphQLCrawler(BaseCrawler):
             
             external_id=str(scene.get("id")),
             image_download=False,
-            image_cut="right",
             source=self.site().value,
         )
 
