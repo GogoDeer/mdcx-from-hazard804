@@ -3229,7 +3229,7 @@ class MyMAinWindow(QMainWindow):
             if success:
                 if manager.config.javstash_api_key != api_key or manager.config.javstash_url != url:
                     self.exec_save_config.emit()
-                    tips += " 已自动保存配置！"
+                    self.show_log_text(" ✅ JavStash 配置已自动保存！")
             else:
                 self.show_log_text(tips)
                 self.set_javstash_status.emit("❌ 连接失败")
