@@ -94,7 +94,7 @@ async def test_live_crawl_returns_valid_data(network):
     crawler = _make_crawler()
     data = await crawler._run(_make_context())
 
-    assert isinstance(data, CrawlerData)
+    assert isinstance(data, CrawlerResult)
     assert data.number == "STARS-358"
     assert data.external_id == SCENE_UUID
     assert data.title  # non-empty
@@ -103,7 +103,7 @@ async def test_live_crawl_returns_valid_data(network):
     assert len(data.actors) >= 1
     assert len(data.directors) >= 1
     assert data.thumb.startswith("http")
-    _assert_no_sentinel(data, "CrawlerData")
+    _assert_no_sentinel(data, "CrawlerResult")
 
 
 @pytest.mark.asyncio
@@ -113,10 +113,9 @@ async def test_live_full_pipeline(network):
         pytest.skip("requires --network")
 
     crawler = _make_crawler()
-    crawler_data = await crawler._run(_make_context())
+    crawler_res = await crawler._run(_make_context())
 
-    result_v2 = crawler_data.to_result()
-    final = update(CrawlersResult.empty(), result_v2)
+    final = update(CrawlersResult.empty(), crawler_res)
     final = _deal_res(final)
 
     _assert_no_sentinel(final, "CrawlersResult")

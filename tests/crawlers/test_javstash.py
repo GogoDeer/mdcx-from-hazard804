@@ -15,12 +15,14 @@ import pytest
 
 from mdcx.config.manager import manager
 from mdcx.config.models import Website
-from mdcx.core.file_crawler import _deal_res
-from mdcx.crawlers.base import Context, CralwerException
+from mdcx.core.file_crawler import FileScraper, _deal_res
+from mdcx.crawler import CrawlerProvider
+from mdcx.crawlers.base import Context, CralwerException, get_crawler
 from mdcx.crawlers.base.types import NOT_SUPPORT, CrawlerData, NotSupport
 from mdcx.crawlers.javstash import StashGraphQLCrawler
-from mdcx.models.types import CrawlerInput, CrawlersResult
+from mdcx.models.types import CrawlerInput, CrawlerResult, CrawlersResult
 from mdcx.utils.dataclass import update
+from mdcx.utils.javstash_utils import parse_javstash_response, verify_javstash_connection_sync
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
 
@@ -425,3 +427,106 @@ def test_site_returns_javstash():
 
 def test_base_url_is_javstash():
     assert StashGraphQLCrawler.base_url_() == "https://javstash.org"
+
+
+def test_crawler_is_registered():
+    import mdcx.crawlers  # noqa: F401
+    assert get_crawler(Website.JAVSTASH) is StashGraphQLCrawler
+
+
+@pytest.mark.asyncio
+async def test_run_with_hash_lookup(mock_client, stars358_scene, monkeypatch):
+    manager.config.javstash_api_key = "test_key"
+    crawler = StashGraphQLCrawler(client=mock_client)
+    crawler._post_graphql = AsyncMock(
+        return_value={"findScenesBySceneFingerprints": [stars358_scene]}
+    )
+    monkeypatch.setattr("oshash.oshash", lambda p: "fake_oshash_12345")
+
+    ctx = Context(input=CrawlerInput.empty())
+    ctx.input.file_path = Path("fake_video.mp4")
+
+    res = await crawler._run(ctx)
+    assert isinstance(res, CrawlerResult)
+    assert res.external_id == "07adfc8a-97ac-4583-9ebf-73b0ff7cc478"
+    assert res.title.startswith("「先輩")
+    crawler._post_graphql.assert_called_once()
+    args = crawler._post_graphql.call_args[0]
+    assert args[2] == {"oshash": "fake_oshash_12345", "checksum": None}
+
+
+@pytest.mark.asyncio
+async def test_run_returns_crawler_response_with_crawler_result(mock_client, stars358_scene):
+    manager.config.javstash_api_key = "test_key"
+    crawler = StashGraphQLCrawler(client=mock_client)
+    crawler._post_graphql = AsyncMock(return_value={"findScenes": {"scenes": [stars358_scene]}})
+
+    inp = CrawlerInput.empty()
+    inp.number = "STARS-358"
+    resp = await crawler.run(inp)
+
+    assert resp.data is not None
+    assert isinstance(resp.data, CrawlerResult)
+    assert resp.data.actor == "戸田真琴"
+    assert "戸田真琴" in resp.data.actors
+    assert resp.data.source == "javstash"
+
+
+@pytest.mark.asyncio
+async def test_file_scraper_integration_with_javstash(mock_client, stars358_scene):
+    manager.config.javstash_api_key = "test_key"
+    provider = CrawlerProvider(manager.config, mock_client)
+    crawler = StashGraphQLCrawler(mock_client)
+    crawler._post_graphql = AsyncMock(return_value={"findScenes": {"scenes": [stars358_scene]}})
+    provider.instances[Website.JAVSTASH] = crawler
+
+    scraper = FileScraper(manager.config, provider)
+    inp = CrawlerInput.empty()
+    inp.number = "STARS-358"
+
+    res = await scraper._call_crawlers(inp, [Website.JAVSTASH])
+    assert res is not None
+    assert res.title.startswith("「先輩")
+    assert res.actor == "戸田真琴"
+    assert res.studio == "SODSTAR"
+    assert res.release == "2021-04-08"
+    assert res.runtime == "128"
+    assert res.external_ids[Website.JAVSTASH] == "07adfc8a-97ac-4583-9ebf-73b0ff7cc478"
+
+
+# ---------------------------------------------------------------------------
+# Connection verification utilities
+# ---------------------------------------------------------------------------
+
+
+def test_parse_javstash_response_success():
+    ok, msg = parse_javstash_response({"data": {"me": {"name": "Admin"}}})
+    assert ok is True
+    assert "Admin" in msg
+    assert "✅" in msg
+
+
+def test_parse_javstash_response_auth_error():
+    ok, msg = parse_javstash_response(None, status_code=401)
+    assert ok is False
+    assert "无权限" in msg
+
+
+def test_parse_javstash_response_graphql_error():
+    ok, msg = parse_javstash_response({"errors": [{"message": "Invalid API key"}]})
+    assert ok is False
+    assert "Invalid API key" in msg
+
+
+def test_parse_javstash_response_network_error():
+    ok, msg = parse_javstash_response(None, error="Connection refused")
+    assert ok is False
+    assert "Connection refused" in msg
+
+
+def test_verify_javstash_connection_sync_empty():
+    ok, msg = verify_javstash_connection_sync("", "")
+    assert ok is False
+    assert "未填写" in msg
+
+

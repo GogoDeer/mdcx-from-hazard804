@@ -8,6 +8,7 @@ import oshash
 from ..config.manager import manager
 from ..config.models import Website
 from ..utils.javstash_utils import STASH_HEADERS
+from mdcx.models.types import CrawlerResult
 from .base import BaseCrawler, Context, CralwerException, CrawlerData
 
 if TYPE_CHECKING:
@@ -117,7 +118,7 @@ class StashGraphQLCrawler(BaseCrawler):
     """ + SCENE_FRAGMENT
 
     @override
-    async def _run(self, ctx: Context) -> CrawlerData:
+    async def _run(self, ctx: Context) -> CrawlerResult:
         scene = None
 
         # 1. Direct ID lookup via appoint_url
@@ -156,7 +157,8 @@ class StashGraphQLCrawler(BaseCrawler):
         if not scene:
             raise CralwerException("未找到匹配场景")
 
-        return self._map_scene(scene, ctx)
+        data = self._map_scene(scene, ctx)
+        return await self.post_process(ctx, data.to_result())
 
     def _map_scene(self, scene: dict[str, Any], ctx: Context) -> CrawlerData:
         release = scene.get("date", "")
