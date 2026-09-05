@@ -635,6 +635,8 @@ def save_config(self: "MyMAinWindow"):
     manager.config.fc2ppvdb = self.Ui.plainTextEdit_cookie_fc2ppvdb.toPlainText()  # fc2ppvdb cookie
     manager.config.javbus = self.Ui.plainTextEdit_cookie_javbus.toPlainText()  # javbus cookie
     manager.config.theporndb_api_token = self.Ui.lineEdit_api_token_theporndb.text()  # api token
+    manager.config.javstash_api_key = self.Ui.lineEdit_javstash_api_key.text()
+    manager.config.javstash_url = self.Ui.lineEdit_javstash_url.text()
     if manager.config.javdb:
         manager.config.javdb = manager.config.javdb.replace("locale=en", "locale=zh")
     # endregion

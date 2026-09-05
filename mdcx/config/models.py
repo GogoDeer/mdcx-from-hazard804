@@ -1,3 +1,4 @@
+import logging
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -5,7 +6,7 @@ from datetime import timedelta
 from functools import lru_cache
 from typing import TYPE_CHECKING, Any, Literal, cast
 
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator, model_validator
 from pydantic.fields import FieldInfo
 
 from ..gen.field_enums import CrawlerResultFields
@@ -128,6 +129,7 @@ SCRAPING_TYPE_SITE_FIELDS = {
 
 DEFAULT_FIELD_SITE_PRIORITY = [
     Website.THEPORNDB,
+    Website.JAVSTASH,
     Website.DMM,
     Website.OFFICIAL,
     Website.MGSTAGE,
@@ -614,6 +616,8 @@ class Config(BaseModel):
     timeout: int = Field(default=10, title="超时")
     retry: int = Field(default=3, title="重试")
     theporndb_api_token: str = Field(default="", title="Theporndb API令牌")
+    javstash_api_key: str = Field(default="", title="JavStash API密钥")
+    javstash_url: str = Field(default="https://javstash.org", title="JavStash 地址")
     javdb: str = Field(default="", title="Javdb")
     fc2ppvdb: str = Field(default="", title="FC2PPVDB")
     javbus: str = Field(default="", title="Javbus")
@@ -721,6 +725,10 @@ class Config(BaseModel):
 
     def get_site_url(self, site: Website, default: str = "") -> str:
         """获取指定网站的用户自定义 URL, 结尾无斜杠."""
+        # JavStash (Stash-Box) 允许用户自建实例且需要 API Key 进行认证，
+        # 因为 SiteConfig 无法存储 API Key，因此使用独立字段
+        if site == Website.JAVSTASH:
+            return (self.javstash_url or "").strip().rstrip("/")
         return str(self.get_site_config(site).custom_url or default).rstrip("/")
 
     def get_field_config(self, field: CrawlerResultFields) -> FieldConfig:
@@ -823,6 +831,13 @@ class Config(BaseModel):
             Config._convert_field_configs(d)
 
         return warnings
+
+    @model_validator(mode="after")
+    def _normalize_javstash_url(self) -> "Config":
+        url = (self.javstash_url or "").strip().rstrip("/")
+        if url:
+            self.javstash_url = url
+        return self
 
     @staticmethod
     def _convert_field_configs(d):

@@ -24,6 +24,7 @@ from ..network_fingerprint import build_amazon_headers
 from ..signals import signal
 from ..utils import executor
 from ..utils.file import check_pic_async
+from ..utils.javstash_utils import STASH_HEADERS, STASH_ME_QUERY, parse_javstash_response
 
 
 class _AdaptiveRequestThrottle:
@@ -838,6 +839,37 @@ def check_theporndb_api_token() -> str:
     return tips
 
 
+def check_javstash_api_key() -> str:
+    tips = "✅ 连接正常! "
+    api_key = manager.config.javstash_api_key
+    url = manager.config.javstash_url
+    if not api_key:
+        tips = "❌ 未填写 API Key，影响 Stash 刮削！可在「设置」-「网络」添加！"
+    else:
+        headers = {
+            **STASH_HEADERS,
+            "ApiKey": api_key,
+            "Accept": "application/json",
+        }
+        endpoint = f"{url.rstrip('/')}/graphql"
+        # Use the 'Me' query as seen in Stash source code for connection testing
+        json_data = {"query": STASH_ME_QUERY, "variables": {}}
+
+        response, err = executor.run(manager.computed.async_client.post_json(endpoint, json_data=json_data, headers=headers))
+        
+        status_code = getattr(response, "status_code", None)
+        # post_json might return a dict directly on success, or a response object on failure
+        res_data = response if isinstance(response, dict) else None
+        if not res_data and hasattr(response, "json"):
+            try:
+                res_data = response.json()
+            except Exception:
+                res_data = None
+                
+        _, tips = parse_javstash_response(res_data, error=err, status_code=status_code)
+
+    signal.show_log_text(tips.replace("❌", " ❌ JavStash").replace("✅", " ✅ JavStash"))
+    return tips
 async def get_actorname(number: str) -> tuple[bool, str]:
     # 获取真实演员名字
     url = f"https://av-wiki.net/?s={number}"

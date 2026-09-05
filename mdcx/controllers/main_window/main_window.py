@@ -41,7 +41,7 @@ from mdcx.base.file import (
 )
 from mdcx.base.image import add_del_extrafanart_copy
 from mdcx.base.video import add_del_extras, add_del_theme_videos
-from mdcx.base.web import check_theporndb_api_token, check_version
+from mdcx.base.web import check_javstash_api_key, check_theporndb_api_token, check_version
 from mdcx.base.web_sync import get_text_sync
 from mdcx.config.enums import NfoInclude, Switch, Website
 from mdcx.config.extend import deal_url, get_movie_path_setting, parse_media_paths
@@ -81,6 +81,7 @@ from mdcx.utils.file import (
     resolve_link_source_sync,
     resolve_success_record_source_sync,
 )
+from mdcx.utils.javstash_utils import verify_javstash_connection_sync
 from mdcx.views.MDCx import Ui_MDCx
 
 from ..cut_window import CutWindow
@@ -119,6 +120,7 @@ class MyMAinWindow(QMainWindow):
     set_fc2ppvdb_status = pyqtSignal(str)  # fc2ppvdb 检查状态更新
     set_javbus_cookie = pyqtSignal(str)  # 加载javbus cookie文本内容到设置页面
     set_javbus_status = pyqtSignal(str)  # javbus 检查状态更新
+    set_javstash_status = pyqtSignal(str)  # javstash 检查状态更新
     exec_save_config = pyqtSignal()  # 主线程执行保存配置
     set_label_file_path = pyqtSignal(str)  # 主界面更新路径信息显示
     set_pic_pixmap = pyqtSignal(list, list)  # 主界面显示封面、缩略图
@@ -3196,6 +3198,51 @@ class MyMAinWindow(QMainWindow):
         self.set_javbus_status.emit(tips)
         # self.Ui.pushButton_check_javbus_cookie.setEnabled(True)
         return tips
+
+    # javstash 测试
+    def pushButton_test_javstash_clicked(self):
+        url = self.Ui.lineEdit_javstash_url.text().strip()
+        api_key = self.Ui.lineEdit_javstash_api_key.text().strip()
+        if not url:
+            self.show_log_text(" ❌ JavStash 未填写地址！")
+            self.set_javstash_status.emit("❌ 未填写地址")
+            return
+        if not api_key:
+            self.show_log_text(" ❌ JavStash 未填写密钥！")
+            self.set_javstash_status.emit("❌ 未填写密钥")
+            return
+            
+        self.show_log_text(" ⏳ 正在检测 JavStash 连接...")
+        self.set_javstash_status.emit("⏳ 正在检测中...")
+        try:
+            t = threading.Thread(target=self._test_javstash, args=(url, api_key))
+            t.start()
+        except Exception:
+            signal_qt.show_traceback_log(traceback.format_exc())
+            self.show_log_text(traceback.format_exc())
+
+    def _test_javstash(self, url: str, api_key: str):
+        try:
+            proxy = manager.config.proxy if manager.config.use_proxy and manager.config.proxy else None
+            success, tips = verify_javstash_connection_sync(url, api_key, proxy=proxy, timeout=15)
+            
+            if success:
+                if manager.config.javstash_api_key != api_key or manager.config.javstash_url != url:
+                    self.exec_save_config.emit()
+                    self.show_log_text(" ✅ JavStash 配置已自动保存！")
+            else:
+                self.show_log_text(tips)
+                self.set_javstash_status.emit("❌ 连接失败")
+                return
+        except Exception as e:
+            tips = f"❌ JavStash 连接失败！异常: {e}"
+            self.show_log_text(tips)
+            self.set_javstash_status.emit("❌ 连接失败")
+            return
+            
+        self.show_log_text(tips)
+        self.set_javstash_status.emit("✅ 连接正常")
+
 
     # endregion
 

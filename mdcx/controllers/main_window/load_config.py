@@ -905,6 +905,8 @@ def load_config(self: "MyMAinWindow"):
             self.Ui.lineEdit_site_custom_url.setText(manager.config.get_site_url(Website(site)))
 
         self.Ui.lineEdit_api_token_theporndb.setText(manager.config.theporndb_api_token)
+        self.Ui.lineEdit_javstash_api_key.setText(manager.config.javstash_api_key)
+        self.Ui.lineEdit_javstash_url.setText(manager.config.javstash_url)
         # javdb cookie
         self.set_javdb_cookie.emit(manager.config.javdb)
         # fc2ppvdb cookie（兼容旧配置：旧版本可能填在 javdb 中）

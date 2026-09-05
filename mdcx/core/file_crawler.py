@@ -10,7 +10,7 @@ from ..gen.field_enums import CrawlerResultFields
 from ..manual import ManualConfig
 from ..models.enums import FileMode
 from ..models.flags import Flags
-from ..models.log_buffer import LogBuffer
+from ..models.log_buffer import LogBuffer  # 用于记录和展示刮削过程中的日志
 from ..models.types import CrawlerInput, CrawlerResponse, CrawlerResult, CrawlersResult, CrawlTask
 from ..number import is_uncensored
 from ..utils.dataclass import update
@@ -173,7 +173,11 @@ def _deal_res(res: CrawlersResult) -> CrawlersResult:
 
     # 评分
     if res.score:
-        res.score = f"{float(res.score):.1f}"
+        # 格式化评分，保留一位小数。如果转换失败则设为 0.0
+        try:
+            res.score = f"{float(res.score):.1f}"
+        except (ValueError, TypeError):
+            res.score = "0.0"
 
     # publisher
     if not res.publisher:
@@ -209,9 +213,11 @@ def _deal_res(res: CrawlersResult) -> CrawlersResult:
         "\u2800": "",
     }
     for each in key_word:
+        # 遍历指定字段，将特殊的 HTML 实体或字符替换为常规字符，避免显示问题
         for key, value in rep_word.items():
-            # res[each] = res[each].replace(key, value)
-            setattr(res, each, getattr(res, each).replace(key, value))
+            val = getattr(res, each)
+            if isinstance(val, str):
+                setattr(res, each, val.replace(key, value))
 
     return res
 
@@ -529,8 +535,9 @@ class FileScraper:
         web_data = await self._call_crawler(task_input, website)
         web_data_json = web_data.data
         if web_data_json is None:
+            # 如果刮削失败且有错误信息，记录到全局错误缓冲区，以便 UI 显示失败原因
             if e := web_data.debug_info.error:
-                LogBuffer.error().write(str(e))
+                LogBuffer.error().write(f"{website.value} 刮削失败: {str(e)}")
             return None
 
         res = self._convert_specific_crawler_result(
