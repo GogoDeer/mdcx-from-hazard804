@@ -21717,7 +21717,7 @@
                               <string notr="true">color: rgb(8, 128, 128);</string>
                             </property>
                             <property name="text">
-                              <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&#35775;&#38382;&#24744;&#30340; Stash-Box &#23454;&#20363;&#65288;&#40664;&#35748; &lt;a href=&quot;https://javstash.org&quot;&gt;&lt;span style=&quot;color:#094fd1;&quot;&gt;javstash.org&lt;/span&gt;&lt;/a&gt;&#65289;&#65292;&#30767;&#24405;&#21518;&#28857;&#20987;&#21491;&#19978;&#35282;&#22836;&#20687; &#8594; User Settings &#8594; API Keys &#8594; Generate&#65292;&#23558;&#29983;&#25104;&#30340; Key &#22586;&#20837;&#19978;&#26041;&#23494;&#38053;&#26694;&#12290;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+                              <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;访问您的 Stash-Box 实例（默认 &lt;a href=&quot;https://javstash.org&quot;&gt;&lt;span style=&quot;color:#094fd1;&quot;&gt;javstash.org&lt;/span&gt;&lt;/a&gt;），登录后点击右上角头像 → User Settings → API Keys → Generate，将生成的 Key 填入上方密钥框。&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
                             </property>
                             <property name="wordWrap">
                               <bool>true</bool>
