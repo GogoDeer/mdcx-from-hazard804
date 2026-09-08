@@ -1214,17 +1214,15 @@ class ActorSourceTestThread(QThread):
 
     def run(self):
         try:
-            import asyncio
-
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                logs, avatar_path, info = loop.run_until_complete(
-                    _actor_source_test_execute(self._name, self._need_image, self._need_info)
-                )
-                self.result.emit(logs, avatar_path, info)
-            finally:
-                loop.close()
+            # 走共享后台执行器（app 持久事件循环），与 FetchActorsThread/SyncThread 一致。
+            # 议题 #87：此前自建一次性事件循环再关闭，数据源测试复用共享 curl_cffi
+            # 客户端时其 cffi 定时器被注册到该一次性 loop 上；loop 关闭后定时器仍触发，
+            # 回调里抛 "Event loop is closed"，Windows 上弹 Python-CFFI error。
+            # 改走 executor.run（提交到永不随线程关闭的后台循环），根除该弹窗。
+            logs, avatar_path, info = executor.run(
+                _actor_source_test_execute(self._name, self._need_image, self._need_info)
+            )
+            self.result.emit(logs, avatar_path, info)
         except Exception as e:
             self.error.emit(str(e))
 
