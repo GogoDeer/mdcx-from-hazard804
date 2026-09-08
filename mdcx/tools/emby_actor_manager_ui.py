@@ -565,11 +565,19 @@ class EmbyActorManagerDialog(QDialog):
         self.log(f"🧹 已清空 {len(cache_dirs)} 个缓存目录，删除 {removed} 个文件/目录")
 
     def _open_log_file(self):
-        """打开演员管理器日志文件（追加模式）"""
+        """打开演员管理器日志文件（追加模式）。
+
+        议题 #88：与主程序日志同目录（data_folder/Log，而非 userdata/logs），
+        并按打开时刻加时间戳命名（如 2026-09-07-05-13-17 actor_manager.log），
+        避免历次会话全塞进同一个 actor_manager.log。
+        """
+        import time
+
         try:
-            log_dir = resources.u("logs")
+            log_dir = manager.data_folder / "Log"
             log_dir.mkdir(parents=True, exist_ok=True)
-            self._log_file = log_dir / "actor_manager.log"
+            ts = time.strftime("%Y-%m-%d-%H-%M-%S")
+            self._log_file = log_dir / f"{ts} actor_manager.log"
         except Exception:
             self._log_file = None
 

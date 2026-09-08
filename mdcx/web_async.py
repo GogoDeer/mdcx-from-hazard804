@@ -1759,6 +1759,17 @@ class AsyncWebClient:
                     # 检查响应状态
                     elif resp.status_code >= 300 and not (resp.status_code == 302 and resp.headers.get("Location")):
                         error_msg = f"HTTP {resp.status_code}"
+                        # 4xx/5xx 响应体常含服务器具体错误（如 Emby 400 的字段校验 JSON）。
+                        # 原只取状态码导致上层无从定位根因（议题 #88：演员同步 400 只见 "HTTP 400"）。
+                        # 追加截断后的响应体，保留 "HTTP {status}" 前缀以兼容既有匹配/分类逻辑。
+                        if resp.status_code >= 400:
+                            body_preview = ""
+                            try:
+                                body_preview = (resp.text or "")[:500]
+                            except Exception:
+                                body_preview = ""
+                            if body_preview:
+                                error_msg = f"{error_msg} body={body_preview}"
                         retry = self._is_retryable_status_code(resp.status_code)
                         if retry and attempt < retry_count - 1:
                             await self._record_retryable_response_failure(error_msg, pool_key=pool_key)
