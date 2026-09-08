@@ -1539,6 +1539,7 @@ async def get_big_pic_by_amazon(
                 if candidate is None:
                     barcode_candidates[each_key] = create_candidate(
                         url=url,
+                        detail_url=normalized_detail_url,
                         pic_title=pic_title,
                         pic_ver=pic_ver,
                         media_priority=media_priority,
@@ -1743,6 +1744,7 @@ async def get_big_pic_by_amazon(
                 if candidate is None:
                     candidate_pool[each_key] = create_candidate(
                         url=url,
+                        detail_url=normalized_detail_url,
                         pic_title=pic_title,
                         pic_ver=pic_ver,
                         media_priority=media_priority,

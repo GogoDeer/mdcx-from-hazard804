@@ -155,3 +155,50 @@ async def test_adaptive_request_throttle_recovers_after_success(monkeypatch: pyt
     assert level3 == 1
     assert level4 == 0
     assert throttle.base_spacing < throttle._request_spacing < boosted_spacing
+
+
+@pytest.mark.asyncio
+async def test_amazon_search_create_candidate_no_typeerror(monkeypatch):
+    """议题 #91：搜索页候选收集走 create_candidate 新建分支不得抛 TypeError。
+
+    抽取重构把 create_candidate 的 detail_url 改为 keyword-only 必填后，
+    barcode 路径（1540）与主搜索路径（1744）两处调用点均未同步传参——
+    任何走到「新建候选」的刮削都会炸 TypeError，亚马逊封面获取整体失效。
+    """
+    from mdcx.core import amazon
+    from mdcx.models.model_types import CrawlersResult
+
+    html_search = """
+    <html><body>
+    <div data-component-type="s-search-result" data-asin="B0IPIT009">
+      <a class="a-text-bold">DVD</a>
+      <h2><a href="https://www.amazon.co.jp/dp/B0IPIT009"><span>IPIT-009 愛田みる</span></a></h2>
+      <img class="s-image" src="https://m.media-amazon.com/images/I/test._SL500_.jpg">
+    </div>
+    </body></html>
+    """
+
+    async def _no_cache(number):
+        return None
+
+    async def _fake_get_amazon_data(url, *args, **kwargs):
+        if "/dp/" in url:
+            return False, ""
+        return True, html_search
+
+    async def _no_size(_url, _ctx=None):
+        return 0, 0
+
+    async def _fake_barcodes(result, media_context=None):
+        # 触发 try_get_big_pic_by_amazon_via_barcode 的条码快路径（1540 调用点）
+        return ["4544031474779"]
+
+    monkeypatch.setattr(amazon, "_check_asin_cache", _no_cache)
+    monkeypatch.setattr(amazon, "try_get_amazon_barcodes_from_covers", _fake_barcodes)
+    monkeypatch.setattr(amazon, "get_amazon_data", _fake_get_amazon_data)
+    monkeypatch.setattr(amazon, "_get_image_size", _no_size)
+
+    result = CrawlersResult.empty()
+    result.number = "IPIT-009"
+    hd_pic_url = await amazon.get_big_pic_by_amazon(result, "IPIT-009", ["演员"])
+    assert isinstance(hd_pic_url, str)
