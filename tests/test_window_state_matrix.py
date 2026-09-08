@@ -755,3 +755,21 @@ def test_setting_content_clears_config_bar_when_scrolled(win, app):
             f"tab{i}({ui.tabWidget.tabText(i)}) layout 内容 min 高缺底部余量: "
             f"{content.minimumHeight()} != {hint_h}+{margin}"
         )
+
+
+def test_left_status_badges_follow_window_bottom(win, app):
+    """议题 #86：左侧状态区（MDCx 版本/检查更新块与数字浮标）必须随窗口底边同步。
+
+    回归背景：label_show_version/label_local_number 固定在设计 y 坐标，
+    窗口最大化后留在上半区，与侧栏贴底的「正常模式」字段分离，
+    视觉上像状态条移位（用户图 3 红框标注「不正常应该下移」）。
+    窗口 1920x1170 时 label_show_version 应移至 y≈969（1170-201），
+    label_local_number 移至 y≈1149（1170-21）。
+    """
+    _goto(win, app, "page_main")
+    win.resize(1920, 1170)
+    win.show()
+    app.processEvents()
+
+    assert win.Ui.label_show_version.y() == 969, f"label_show_version 未贴底: y={win.Ui.label_show_version.y()}"
+    assert win.Ui.label_local_number.y() == 1149, f"label_local_number 未贴底: y={win.Ui.label_local_number.y()}"

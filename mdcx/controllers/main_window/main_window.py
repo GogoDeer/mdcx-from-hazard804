@@ -543,6 +543,12 @@ class MyMAinWindow(QMainWindow):
             return
         width, height = self.width(), self.height()
         ui.widget_setting.setGeometry(0, 0, 210, height)
+        # 议题 #86：左侧状态区（正常模式/actor.json/MDCx 版本/点击检查最新版本）
+        # 与浮标数字图标原本固定设计 y 坐标，窗口拉高后滞留在上半区——贴 widget_setting
+        # 底部随窗口同步下移。label_show_version 设计 (0,489,210,201)：底部对齐的文本框
+        # 需保持底边与 widget_setting 底边贴齐；label_local_number 设计 (0,680,21,21)。
+        ui.label_show_version.move(0, max(height - 201, 489))
+        ui.label_local_number.move(0, max(height - 21, 680))
         ui.stackedWidget.setGeometry(210, 6, max(width - 210 - 2, 400), max(height - 8, 300))
         ui.progressBar_scrape.setGeometry(209, -1, max(width - 211, 100), 7)
         self._sync_page_layouts()  # 同步动态页面的内部尺寸
