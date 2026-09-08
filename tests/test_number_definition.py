@@ -115,6 +115,11 @@ def test_get_file_number_normalizes_dmm_preorder_9_prefix(raw_number: str, expec
         (r"D:/test/DANDY-818.mp4", "DANDY-818"),
         (r"D:/test/KIWVR-254.mp4", "KIWVR-254"),
         (r"D:/test/GARA-022.mp4", "GARA-022"),
+        # 议题 #84：前导单数字是 studio 名的一部分（3DSVR/7PPP），必须保留
+        # 不误伤：多位素人前缀（259LUXU）走更前面的 \d{2,}[A-Z] 分支、经 short_number 剥离
+        (r"D:/test/3DSVR-1234.mp4", "3DSVR-1234"),
+        (r"D:/test/7PPP-123.mp4", "7PPP-123"),
+        (r"D:/test/DSVR-1234.mp4", "DSVR-1234"),
     ],
 )
 def test_get_file_number_keeps_non_suren_prefixes(raw_number: str, expected_number: str):

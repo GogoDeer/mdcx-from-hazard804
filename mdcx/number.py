@@ -286,9 +286,10 @@ def get_file_number(filepath: str, escape_string_list: list[str]) -> str:
     elif r := re.search(r"TH101-\d{3,}-\d{5,}", filename):  # 提取th101-140-112594
         file_number = r.group().lower()
 
-    elif r := re.search(r"(?<![A-Z0-9])9([A-Z]{2,})(\d{2,3})(?![A-Z0-9])", filename):
-        # 提取 DMM 预约版番号 9ssis01 -> SSIS-001（9 前缀 + 厂牌 + 编号，编号补零到 3 位）
+    elif r := re.search(r"(?<![A-Z0-9])9([A-Z]{2,})-?(\d{2,3})(?![A-Z0-9])", filename):
+        # 提取 DMM 预约版番号 9ssis01 / 9ssis-001 -> SSIS-001（9 前缀 + 厂牌 + 编号，编号补零到 3 位）
         # lookbehind 保证 9 必须是番号段开头（前面不是字母数字），防误伤 ABC9XXX 这类
+        # `-?` 兼容带横杠形态（9SSIS-001）；3DSVR/7PPP 等前导单数字 studio 非 9 前缀，不受此分支影响
         file_number = f"{r.group(1)}-{int(r.group(2)):03d}"
 
     elif r := re.search(r"([A-Z]{2,})00(\d{3})", filename):  # 提取ssni00644为ssni-644
@@ -297,7 +298,7 @@ def get_file_number(filepath: str, escape_string_list: list[str]) -> str:
     elif r := re.search(r"\d{2,}[A-Z]{2,}-\d{2,}[A-Z]?", filename):  # 提取类似259luxu-1456番号
         file_number = r.group()
 
-    elif r := re.search(r"[A-Z]{2,}-\d{2,}[Z]?", filename):  # 提取类似mkbd-120番号
+    elif r := re.search(r"\d?[A-Z]{2,}-\d{2,}[Z]?", filename):  # 提取类似mkbd-120 / 3ds-1234 番号（前导单数字属 studio 名，保留）
         file_number = r.group()
         for key, value in ManualConfig.SUREN_DIC.items():
             if _matches_suren_prefix(file_number, key):
