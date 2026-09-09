@@ -298,7 +298,9 @@ def get_file_number(filepath: str, escape_string_list: list[str]) -> str:
     elif r := re.search(r"\d{2,}[A-Z]{2,}-\d{2,}[A-Z]?", filename):  # 提取类似259luxu-1456番号
         file_number = r.group()
 
-    elif r := re.search(r"\d?[A-Z]{2,}-\d{2,}[Z]?", filename):  # 提取类似mkbd-120 / 3ds-1234 番号（前导单数字属 studio 名，保留）
+    elif r := re.search(
+        r"\d?[A-Z]{2,}-\d{2,}[Z]?", filename
+    ):  # 提取类似mkbd-120 / 3ds-1234 番号（前导单数字属 studio 名，保留）
         file_number = r.group()
         for key, value in ManualConfig.SUREN_DIC.items():
             if _matches_suren_prefix(file_number, key):
@@ -307,7 +309,9 @@ def get_file_number(filepath: str, escape_string_list: list[str]) -> str:
 
     elif (
         (r := re.search(r"[A-Z]+-[A-Z]\d+", filename))  # mkbd-s120
-        or (r := re.search(r"(?<![A-Z0-9])\d{2,}[-_]\d{2,}", filename))  # 111111-000 111111_000（前导字母的 T38-041 类不匹配，保留完整番号，议题 #92）
+        or (
+            r := re.search(r"(?<![A-Z0-9])\d{2,}[-_]\d{2,}", filename)
+        )  # 111111-000 111111_000（前导字母的 T38-041 类不匹配，保留完整番号，议题 #92）
         or (r := re.search(r"(?<![A-Z0-9])\d{3,}-[A-Z]{3,}", filename))  # 111111-MMMM
     ):
         file_number = r.group()

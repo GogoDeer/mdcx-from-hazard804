@@ -692,9 +692,7 @@ async def test_unrecorded_site_retried_for_later_fields(monkeypatch: pytest.Monk
     旧行为：预收集与字段合并把「未收录」站点加入 failed，后续字段直接跳过该站；
     新行为：未收录站按字段重复请求，仅超时/请求异常才永久跳过。
     """
-    monkeypatch.setattr(
-        ManualConfig, "REDUCED_FIELDS", (CrawlerResultFields.TITLE, CrawlerResultFields.ACTORS)
-    )
+    monkeypatch.setattr(ManualConfig, "REDUCED_FIELDS", (CrawlerResultFields.TITLE, CrawlerResultFields.ACTORS))
     LogBuffer.error().clear()
 
     avbase_calls: list[Website] = []
