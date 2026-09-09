@@ -676,3 +676,48 @@ async def test_call_specific_crawler_writes_debug_error_to_log_buffer():
     assert result is None
     assert "请添加 API Token 后刮削！" in LogBuffer.error().get()
     LogBuffer.error().clear()
+
+
+class _AllFieldsPriorityConfig(_FakeConfig):
+    def get_field_config(self, field: CrawlerResultFields) -> FieldConfig:
+        if field in (CrawlerResultFields.TITLE, CrawlerResultFields.ACTORS):
+            return FieldConfig(site_prority=[Website.AVBASE, Website.JAVDB])
+        return super().get_field_config(field)
+
+
+@pytest.mark.asyncio
+async def test_unrecorded_site_retried_for_later_fields(monkeypatch: pytest.MonkeyPatch):
+    """议题 #90 方案A：站点连通但未收录该条目（无请求错误）不进 failed，后续字段仍回该站重试。
+
+    旧行为：预收集与字段合并把「未收录」站点加入 failed，后续字段直接跳过该站；
+    新行为：未收录站按字段重复请求，仅超时/请求异常才永久跳过。
+    """
+    monkeypatch.setattr(
+        ManualConfig, "REDUCED_FIELDS", (CrawlerResultFields.TITLE, CrawlerResultFields.ACTORS)
+    )
+    LogBuffer.error().clear()
+
+    avbase_calls: list[Website] = []
+    javdb_calls: list[Website] = []
+    javdb_data = CrawlerResult.empty()
+    javdb_data.title = "t"
+    javdb_data.actors = ["a"]
+    provider = _ResultRecordingCrawlerProvider(
+        {
+            Website.AVBASE: _ResultRecordingCrawler(Website.AVBASE, avbase_calls, data=None, error=None),
+            Website.JAVDB: _ResultRecordingCrawler(Website.JAVDB, javdb_calls, data=javdb_data, error=None),
+        }
+    )
+    scraper = FileScraper(_AllFieldsPriorityConfig(), provider)
+    task_input = CrawlerInput.empty()
+    task_input.number = "JIMMY-003"
+
+    result = await scraper._call_crawlers(task_input, {Website.AVBASE, Website.JAVDB})
+
+    # AVBASE 未收录：预收集 1 次 + 每个字段合并各 1 次（TITLE/ACTORS），证明未被 failed 永久跳过
+    assert avbase_calls.count(Website.AVBASE) >= 3, f"未收录站未按字段重复请求: {avbase_calls}"
+    # JAVDB 有数据：预收集 1 次后缓存复用，不被重复请求
+    assert javdb_calls.count(Website.JAVDB) == 1, f"有数据站被重复请求: {javdb_calls}"
+    assert result is not None
+    assert result.title == "t"
+    assert result.actors == ["a"]

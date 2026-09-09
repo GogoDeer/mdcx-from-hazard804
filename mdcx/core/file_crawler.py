@@ -381,7 +381,9 @@ class FileScraper:
                 if web_data.data is None:
                     if e := web_data.debug_info.error:
                         raise e
-                    raise ValueError(f"{site} 返回了空数据")
+                    # 议题 #90：请求成功但未收录该条目 ≠ 站点不可用。不进 failed、不缓存，
+                    # 后续字段合并不跳过该站；仅站点级失败（超时/请求异常）才跳过。
+                    return
                 all_res[key] = web_data.data
                 if site in MULTI_LANGUAGE_WEBSITES and (site, Language.UNDEFINED) not in all_res:
                     all_res[(site, Language.UNDEFINED)] = web_data.data
@@ -474,7 +476,10 @@ class FileScraper:
                         if web_data.data is None:
                             if e := web_data.debug_info.error:
                                 raise e
-                            raise ValueError(f"{site} 返回了空数据")
+                            # 议题 #90：请求成功但未收录该条目 ≠ 站点不可用。不加入 failed，
+                            # 该站点后续字段仍可重试；仅站点级失败（超时/请求异常）才跳过。
+                            reduced.field_log += f"\n    🔴 {site:<15} (未收录该条目, 保留供后续字段重试)"
+                            continue
                         site_data = web_data.data
                         # 处理并保存结果
                         all_res[key] = web_data.data
