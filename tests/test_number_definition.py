@@ -120,6 +120,8 @@ def test_get_file_number_normalizes_dmm_preorder_9_prefix(raw_number: str, expec
         (r"D:/test/3DSVR-1234.mp4", "3DSVR-1234"),
         (r"D:/test/7PPP-123.mp4", "7PPP-123"),
         (r"D:/test/DSVR-1234.mp4", "DSVR-1234"),
+        # 议题 #92：字母+数字系列（T38）不能把前导字母 T 丢成 38-041
+        (r"D:/test/T38-041.mp4", "T38-041"),
     ],
 )
 def test_get_file_number_keeps_non_suren_prefixes(raw_number: str, expected_number: str):

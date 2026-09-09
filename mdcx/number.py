@@ -307,8 +307,8 @@ def get_file_number(filepath: str, escape_string_list: list[str]) -> str:
 
     elif (
         (r := re.search(r"[A-Z]+-[A-Z]\d+", filename))  # mkbd-s120
-        or (r := re.search(r"\d{2,}[-_]\d{2,}", filename))  # 111111-000 111111_000
-        or (r := re.search(r"\d{3,}-[A-Z]{3,}", filename))  # 111111-MMMM
+        or (r := re.search(r"(?<![A-Z0-9])\d{2,}[-_]\d{2,}", filename))  # 111111-000 111111_000（前导字母的 T38-041 类不匹配，保留完整番号，议题 #92）
+        or (r := re.search(r"(?<![A-Z0-9])\d{3,}-[A-Z]{3,}", filename))  # 111111-MMMM
     ):
         file_number = r.group()
 
