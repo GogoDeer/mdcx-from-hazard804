@@ -67,7 +67,8 @@
   - **还原/回程类回归用「三态对比探针」定性**（议题 #82 实证）：fresh 同尺寸 → 最大化 → 还原，三态并排座椅控件的 viewport/content/min 宽高、y 坐标、layout 属性，差异即锁点。纯推断在 Qt 布局系统里不可靠（本轮假设"水平滚动条残留"，实测是 min 尺寸锁死+内容裁剪，方向完全不同）；探针跑在 offscreen pytest fixture 里几十秒出结论，诊断结论转正为正式回归测试后删除探针。
   - **配置项的「UI 语义 vs 后端语义」一致性审计**（议题 #83 实证）：UI 下拉框按 crawler 站点值选择走代理，后端按实际请求 host 匹配，映射层（WEB_DIC+TLD 兜底）覆盖不全——用户以为配置了代理，实际 `\`.ai/.ws/.app/.cc\`` 等域名全部直连。方法论两条：①审计下拉/选项类配置时，追问"这一项保存后在后端**会展开成什么**"——UI 展示语义与后端消费语义错位是配置类 bug 的高频形态；②名字到域名/值的映射逻辑**优先从系统内已有的权威声明源构建**（爬虫的 base_url_/_domains），不新建静态映射表——静态表必然随站点换域名过期，权威源随代码维护自动跟随。外部 AI（ChatGPT）的源码分析结论照老规矩独立验证后采纳。
   - **同域测试文件归一纪律**：纯文本/AST 哨兵（断言"源码含某字符串"）被真实行为测试覆盖时删除（test_ui_resize_sync 案例）；同 fixture 的复现测试并入主回归文件（test_maximize_pages_repro 并入 window_state_matrix），文件数减半维护不散。
-  - 大范围撤回用 `git revert --no-commit <多提交>` 合并单撤销提交。
+   - 大范围撤回用 `git revert --no-commit <多提交>` 合并单撤销提交。
+   - **多源字段合并按站点优先级取数：区分「站点级故障」与「数据级未命中」，后者不得永久跳过该站**（#90 实证）：`file_crawler` 曾把「请求超时/请求异常/未收录」三类一刀切进同一 `failed` 集——某站「连通但没收录该条目」也被后续所有字段跳过，破坏「A 站拿演员、B 站拿介绍、回 A 站」跨字段穿梭。修复：仅超时/请求异常进 `failed`；「未收录」（请求成功、`data is None` 且无 error）不进 `failed`、不缓存，保留供后续字段重试。**两处都要改**：并发预收集段 `_fetch_site` 与字段合并段，各有一处「未收录→raise→except→failed.add」。**通用教训：数据聚合里"未命中/空结果"是业务常态，绝不可与"通道故障"混同一跳过标记**（呼应 65 条 404 不计错误率、65 条外部探测先分类再设阈值）。
 
 ## 并发与网络库行为（实测实证）
 
@@ -75,7 +76,8 @@
 - Category: 排错调试
 - Instructions:
   - **curl_cffi 0.16 流式关闭**：`aclose()` 会拉满剩余响应体（放弃 4MB 仍阻塞 3.5s）；同步 `close()` 立即中止。中止流后 session `close()` 抛库内 TypeError 属噪声（`_close_sessions` 有 suppress），后续请求复用正常。改动前看 `web_async.py::_close_response` 注释。**asyncio 线程池归属**：`AsyncBackgroundExecutor` 后台循环的 default executor 与主 loop 的是两个池——"嵌套 to_thread 死锁"类判断先实测两池是否同一个。
-  - **LogBuffer 任务树归因**：写入按 `_ROOT` contextvar 归因，`process_one_file` 入口 `new_root()` 切断兄弟继承。勿按 task_id 全局聚合、勿回退"get() 拼全局 buffers"旧模式（跨影片污染，测试锁定）。
+   - **LogBuffer 任务树归因**：写入按 `_ROOT` contextvar 归因，`process_one_file` 入口 `new_root()` 切断兄弟继承。勿按 task_id 全局聚合、勿回退"get() 拼全局 buffers"旧模式（跨影片污染，测试锁定）。
+   - **后台线程跑异步复用共享 curl_cffi 客户端，禁用一次性事件循环**（#87 实证）：`QThread.run` 里 `asyncio.new_event_loop()` + `run_until_complete(共享客户端协程)` + `loop.close()` 是反模式——共享 curl_cffi `AsyncSession` 的 cffi 定时器被注册到该一次性 loop，`close()` 后定时器仍触发 → curl_cffi 回调抛 `RuntimeError: Event loop is closed` → Windows 上弹 "Python-CFFI error" 框（cffi 回调异常无法传播时的默认弹窗）。**正确范式：一律走全局 `AsyncBackgroundExecutor.run/submit`（app 持久后台循环，永不随线程关闭）**。项目内 FetchActorsThread/SyncThread 已用 executor，唯独数据源测试线程（`ActorSourceTestThread`）曾自建 loop 漏网——新增任何「后台线程 + 共享网络栈」的 QThread 一律复用 executor，不新开 loop；用 AST 哨兵锁住方法内不得再出现 `new_event_loop`/`run_until_complete`。
 
 ## UI 开发与排错
 
@@ -108,7 +110,10 @@
    - **数字开头模块名（如 7mmtv.py）无法用常规 import 语法**——`from .7mmtv import` 是 SyntaxError，crawlers/__init__.py 用 `importlib.import_module("mdcx.crawlers.7mmtv")`；测试同款方式加载。
   - 无码官网五站由 official_uncensored.py 统一路由；均需代理；1pondo/pacopacomama/10musume 的 dyn/phpauto JSON API 直通。
   - 被墙站测试：`uv run python -m scripts.dev_proxy start|status|test <url>|stop`；日本 IP 限制站用 `--port 7891 --regions "jp|日本"`。
-  - devbox 环境限制：超时属云端限制≠站点死亡；高频批量测试触发 CF IP 拉黑换时段；连通性验证必须 curl_cffi impersonate；批量探测校验 data.title 为真实字符串防假阳性。
+   - devbox 环境限制：超时属云端限制≠站点死亡；高频批量测试触发 CF IP 拉黑换时段；连通性验证必须 curl_cffi impersonate；批量探测校验 data.title 为真实字符串防假阳性。
+   - **HTTP 4xx/5xx 错误串必须携带截断响应体，不能只留状态码**（#88 Emby 400 实证）：`web_async.request` 原对 status>=400 只写 `"HTTP {code}"`、丢掉响应体，上层只见 "HTTP 400" 无从定位。现对 status>=400 追加截断（~500 字节）响应体、**保留 `"HTTP {status}"` 前缀**（网络检查/失败分类的 `in`/startswith 匹配不破坏）。通用纪律：任何把 HTTP 错误上报给用户/日志的落点，校验类 4xx 的 body 才有根因（Emby 的字段校验错误 JSON 就在 body 里）。
+   - **番号归一化：前导单数字有双重语义，改正则须双向验证不误伤**（#84 实证）：`number.py` 前导数字①studio 名单数字（`3DSVR`/`7PPP` 的 3/7，须**保留**）②DMM 预约版 `9` 前缀（`9SSIS-001`，须**剥掉**）。#84 为保留 ①把 mkbd 分支 `[A-Z]{2,}-` 改成 `\d?[A-Z]{2,}-`，误把 DMM 9 前缀的带横杠形态（`9SSIS-001`）也保留了 → 需同步把 9 前缀规则加 `-?` 兼容带横杠写法。教训：改归一化正则前 grep 全部分支，改后跑相邻语义的既有测试（DMM 9 前缀、素人多位前缀 `259LUXU` 等）防双向误伤；多位素人前缀由更早的 `\d{2,}[A-Z]` 分支 + `short_number` 单独剥离，不受单数字分支影响。
+   - **站点域名优先级 / 删站属产品取舍，查证给方案不擅动**（#85 实证）：报告人要求 javbus/javlibrary 原版优先、删 4 个 CF 站。查证发现域名优先顺序常有**实测依据**（`_JAVBUS_DOMAINS` 注释「按可用性排列 2026-08-25 实测」，镜像优先因大陆可达性，非随意摆放）——改默认行为前先 grep 该列表注释依据，不擅自翻序。删站影响面大：爬虫注册表 + `Website` 枚举 + 默认 proxy 列表（`Config.proxy_sites`）+ **`config/migrations.py` 清洗旧值**（漏迁移=pydantic 校验失败"保存不生效"）+ UI 站点列表。此类不擅自改，查证后给「改/不改、删/不删」方案让用户定；单站「不通」需真机/网络实测确认站点死活（devbox 网络受限无法可靠复现，别用 devbox 结果判站点死活）。
 
 ## Windows 打包与发布
 
