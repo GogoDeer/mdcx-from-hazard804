@@ -90,6 +90,24 @@ class StopScrape(Exception): ...
 class UnexpectedScrapeCancellation(Exception): ...
 
 
+def reset_flags_preserving_single_file_inputs() -> None:
+    """执行 Flags.reset() 但保留单文件模式输入。
+
+    单文件模式的输入（single_file_path / appoint_url / website_name）由 UI 线程在
+    start_new_scrape 前写入 Flags；_run 里裸调 Flags.reset() 会把它们一并清空，
+    导致后续 get_movie_list（读 single_file_path）与 get_file_info_v2（读
+    appoint_url）拿不到值——单文件「填网址刮削」因此永远刮不到（议题 #94）。
+    本函数在 reset 前快照、reset 后恢复这三个输入，其余运行态照常清空。
+    """
+    single_file_path = Flags.single_file_path
+    appoint_url = Flags.appoint_url
+    website_name = Flags.website_name
+    Flags.reset()
+    Flags.single_file_path = single_file_path
+    Flags.appoint_url = appoint_url
+    Flags.website_name = website_name
+
+
 class Scraper:
     def __init__(self, crawler_provider: "CrawlerProviderProtocol"):
         self.crawler_provider = crawler_provider
@@ -172,7 +190,7 @@ class Scraper:
                 self._state_cache = None
 
     async def _run(self, file_mode: FileMode, movie_list: list[Path] | None) -> None:
-        Flags.reset()
+        reset_flags_preserving_single_file_inputs()
         if movie_list is None:
             movie_list = []
         Flags.scrape_start_time = time.time()  # 开始刮削时间
