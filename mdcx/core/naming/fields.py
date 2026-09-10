@@ -35,18 +35,22 @@ FIELD_DESCRIPTIONS: dict[str, str] = {
 }
 
 FIELD_NAMES = tuple(FIELD_DESCRIPTIONS)
+# 缩短优先级：描述性长字段（简介/原标题/标题/系列/片商…）先缩，结构性目录
+# 字段（演员/番号）尽量保留到最后一刻再缩（议题 #93：系列名过长时，原顺序
+# 先缩演员、保留系列，导致 {{ actor }} 一级目录被整段去掉；调整后演员随番号
+# 一起放到最后缩短）。number 恒为最末（最关键标识）。
 TRUNCATE_PRIORITY = (
     "outline",
     "originaltitle",
     "title",
-    "actor",
-    "all_actor",
     "series",
     "studio",
     "publisher",
     "director",
     "filename",
     "release",
+    "actor",
+    "all_actor",
     "number",
 )
 

@@ -280,3 +280,68 @@ def test_generate_file_name_uses_new_template(monkeypatch):
     monkeypatch.setattr(manager.config, "main_mode", 1)
 
     assert _generate_file_name("", file_info, result) == "ABC-123 1080P"
+
+
+def test_single_actor_value_clipped_not_wiped():
+    """议题 #93：单演员（无分隔符）超宽时应回退字符级截断，而非整字段清空丢目录。"""
+    file_info = _build_file_info()
+    result = _build_result()
+    result.actor = "A" * 50
+    result.number = "MIDV-757"
+
+    rendered = render_name(
+        "{{ actor }}/{{ number }}",
+        file_info,
+        result,
+        NameRenderOptions(target=NamingTarget.FOLDER, max_length=20),
+    )
+
+    # 旧实现 _clip_list 会把无分隔符的单值清空 -> 只剩 number（0 个 A）；
+    # 新实现回退字符级截断，保留大量 A，演员一级目录不丢失
+    assert rendered.text.endswith("/MIDV-757")
+    assert rendered.text.count("A") >= 10
+    assert len(rendered.text) <= 20
+    assert rendered.truncated_fields == ["actor"]
+
+
+def test_series_clipped_before_actor_in_folder_template():
+    """议题 #93：系列名过长时应先缩系列、保留 {{ actor }} 一级目录，而非先丢演员。"""
+    file_info = _build_file_info()
+    result = _build_result()
+    result.series = "很长的系列名" * 40
+    result.actor = "小野六"
+    result.number = "MIDV-757"
+
+    rendered = render_name(
+        "{{ series }}/{{ actor }}/{{ number }}",
+        file_info,
+        result,
+        NameRenderOptions(target=NamingTarget.FOLDER, max_length=40),
+    )
+
+    assert rendered.truncated_fields == ["series"]
+    assert "小野六" in rendered.text
+    assert "MIDV-757" in rendered.text
+    assert len(rendered.text) <= 40
+
+
+def test_truncated_log_lists_only_template_fields():
+    """议题 #93：不在模板里的字段（简介/原标题）不应出现在「已智能缩短」日志里。"""
+    file_info = _build_file_info()
+    result = _build_result()
+    result.outline = "很长的简介" * 40
+    result.originaltitle = "Original" * 30
+    result.title = "很长的标题" * 30
+    result.number = "MIDV-757"
+
+    rendered = render_name(
+        "{{ title }}/{{ number }}",
+        file_info,
+        result,
+        NameRenderOptions(target=NamingTarget.FOLDER, max_length=30),
+    )
+
+    assert rendered.truncated_fields == ["title"]
+    assert "outline" not in rendered.truncated_fields
+    assert "originaltitle" not in rendered.truncated_fields
+    assert len(rendered.text) <= 30

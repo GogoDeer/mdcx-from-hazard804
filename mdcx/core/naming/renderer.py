@@ -6,7 +6,7 @@ from typing import Any
 from ...models.model_types import CrawlersResult, FileInfo
 from .fields import TRUNCATE_PRIORITY, NamingContext, build_naming_context
 from .sanitize import cleanup_rendered_text, sanitize_name
-from .template import render_template
+from .template import collect_template_fields, render_template
 
 LIST_TRUNCATE_FIELDS = {"actor", "all_actor", "director"}
 
@@ -53,7 +53,9 @@ def _clip_list(value: str, max_length: int) -> str:
 
     delimiter_match = re.search(r"[,，、]", value)
     if not delimiter_match:
-        return ""
+        # 单值（无分隔符）无法按项丢弃，回退到字符级截断，避免整字段被清空
+        # （议题 #93：单演员目录超宽时被 _clip_list 直接置空，丢失 {{ actor }} 一级目录）
+        return _clip_text(value, max_length)
 
     delimiter = delimiter_match.group(0)
     parts = [part.strip() for part in re.split(r"[,，、]", value) if part.strip()]
@@ -92,11 +94,16 @@ def _smart_truncate(
     if max_length <= 0 or len(text) <= max_length:
         return text, []
 
+    # 只对模板实际用到的字段做智能缩短：模板外的字段（如未启用的简介/原标题）
+    # 既不影响结果，也不该出现在「已智能缩短」日志里（议题 #93 误导性日志）。
+    template_fields = collect_template_fields(template)
     truncated_fields: list[str] = []
     mutable_values = values.copy()
     for field_name in TRUNCATE_PRIORITY:
         if len(text) <= max_length:
             break
+        if field_name not in template_fields:
+            continue
         current = mutable_values.get(field_name, "")
         if not current:
             continue
