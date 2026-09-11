@@ -20,6 +20,7 @@ cd C:\Tools\trawl-portable-1.4.0-windows
 
 **首次启动**会：
 - 检查 Bun 运行时（如有需要运行 `download-bun.bat`）
+- 校验依赖完整性（优先使用包内自带源码，完全离线）
 - 检查 Camoufox 浏览器（从 `.cache/camoufox` 加载）
 - 启动服务，监听 `http://localhost:8191`
 
@@ -61,7 +62,7 @@ cd C:\Tools\trawl-portable-1.4.0-windows
 
 ### 浏览器池
 
-默认 `BROWSER_POOL_SIZE=2`（稳定性/内存折中）。内存充裕可编辑 `src/.env` 提高（如 3），
+默认 `BROWSER_POOL_SIZE=2`（稳定性/内存折中）。内存充裕可编辑 `.env` 提高（如 3），
 内存紧张可降到 1。
 
 > 若内置 Redis 启动失败（端口被占用等），TRAWL 会以无缓存模式运行，功能不受影响，
@@ -123,7 +124,7 @@ BROWSER_POOL_SIZE=1
 ## 目录结构
 
 ```
-trawl-portable-1.4.0-windows/
+trawl-portable-1.5.0-windows/
 ├── start-trawl.bat          # 启动脚本
 ├── download-bun.bat         # Bun 下载脚本
 ├── trawl-goto-timeout.patch # 稳定性补丁（Tier3/4 超时 30s→90s）
@@ -136,8 +137,9 @@ trawl-portable-1.4.0-windows/
 │   └── redis-server.exe
 ├── .cache/
 │   └── camoufox/            # Camoufox 浏览器 (~663MB)
-├── src/                     # TRAWL 源码
-└── node_modules/            # 依赖
+├── apps/                    # TRAWL 源码（api 应用）
+├── packages/                # TRAWL 源码（共享包）
+└── node_modules/            # 依赖（各应用局部依赖在 apps/api/node_modules）
 ```
 
 ## 系统要求

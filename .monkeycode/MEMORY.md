@@ -16,8 +16,8 @@
   - **模块级带值注解的版本差异**（CI 事故）：`x: T | None = None` 在 Python 3.13 立即求值、3.14 延迟（PEP 649）——本地 3.14 全绿掩盖 CI 3.13 NameError。模块级单例声明一律无注解赋值+注释。**"本地全绿≠CI 通过"的三个维度：输出截断 / 版本语义差异 / 平台差异**。
   - **Windows runner 的 GBK/charmap 解码陷阱**（20260905 发版首轮失败实证）：`subprocess.run(..., text=True)` 不显式给 `encoding="utf-8"` 时，Windows 默认 GBK 解码子进程输出，任何 UTF-8 字节（emoji/依赖 lint 输出/中文路径）都会抛 `UnicodeDecodeError: charmap` 炸掉整条链。同类修复此前只覆盖了测试脚本，build.py 漏同一族。所有跨平台 subprocess 调用一律 `encoding="utf-8", errors="replace"`。
   - 不装 pre-commit；提交前更新 `docs/changelog.md` **当前版本**条目（版本号归属用户，不擅自开新段）。版本号有**四处同步点**：changelog 段标题、`consts.py` LOCAL_VERSION（纯数字 YYYYMMDD）+ VERSION_NAME、`pyproject.toml` version（version_metadata 测试锁定，20260906 bump 实测漏它测试红）。changelog 写作规范（2026-09-05 瘦身实践）：用户视角的发布说明——保留议题号/现象/修复结果/影响，删根因排查叙事、测试细节、提交哈希；已发布历史版本段保持原样。
-  - 站点/爬虫/配置改动同步检查：UI 文案（main_window.py/.ui）、README、docs、爬虫总数（`crawler_names()`）、**`config/migrations.py` 旧值清洗**（漏迁移 → pydantic 校验失败 → "保存不生效"）。
-  - 文档/UI 写死数字前必须 grep 代码核实。高频漂移锚点：默认网站源顺序、代理域名列表（`Config.proxy_sites`）、命名变量表、设置 Tab 名、字段优先级数（`REDUCED_FIELDS`）、演员库列、指纹池、主窗口行数。**Wiki 维护纪律**：仓库 `wiki/` 目录是 GitHub Wiki 的内容源（Home/新手三分钟上手/常见问题-FAQ/_Sidebar）；每次礼貌回帖议题后把通用答案回填 FAQ，发版前检查"本版本高频议题是否已回填"；Wiki 仓库需用户先在网页建首页才能 git 克隆（.wiki.git 未初始化时 clone 报 Repository not found），内容先入库 wiki/ 目录。README 文档导航表首行是 Wiki 入口，爬虫数徽章改动时 README 五处数字同步（徽章/首段/核心特色/导航行）。
+  - 站点/爬虫/配置改动同步检查：UI 文案（`mdcx/controllers/main_window/main_window.py` + `mdcx/views/MDCx.ui`）、README、docs、爬虫总数（`get_registered_crawler_sites()`）、**`config/migrations.py` 旧值清洗**（漏迁移 → pydantic 校验失败 → "保存不生效"）。
+  - 文档/UI 写死数字前必须 grep 代码核实。高频漂移锚点：默认网站源顺序、代理域名列表（`Config.proxy_sites`）、命名变量表、设置 Tab 名、字段优先级数（`REDUCED_FIELDS`）、演员库列、指纹池、主窗口行数。**Wiki 维护纪律**：仓库 `wiki/` 目录是 GitHub Wiki 的内容源（Home/新手三分钟上手/常见问题-FAQ/_Sidebar）；每次礼貌回帖议题后把通用答案回填 FAQ，发版前检查"本版本高频议题是否已回填"；Wiki 仓库需用户先在网页建首页才能 git 克隆（.wiki.git 未初始化时 clone 报 Repository not found），内容先入库 wiki/ 目录。README 文档导航表首行是 Wiki 入口，爬虫数徽章改动时 README 四处数字同步（徽章/首段/核心特色/导航行）；**docs/FEATURES.md「全部 N 个爬虫」标题数字是独立第五处**（2026-09-11 实证：36 站时标题仍写 35，表格 36 行反而齐全——表格逐行 diff 与 registry 一致，标题漏改）。
   - **长时间任务标准做法**：① `background_terminal_create` 后台终端；② checkpoint 断点续传（state 落盘）；③ 分批处理批间落盘；④ wrapper 45-50 分钟自重启（云环境超时杀进程；**后台终端 1 小时上限会连 wrapper 一起回收**——checkpoint 是唯一恢复手段）；⑤ 进度看落盘文件不看终端日志（stdout 全缓冲可能 0 字节假象）。
   - **功能移除类需求先调研证据再答**：查活跃度（近期 bug 修复/议题）、底层共享依赖（删壳删不干净）、移除成本（UI 整页+槽函数+重生成）。用户转述的声音与代码证据矛盾时以代码为准（Emby 管理器/NFO 库管理案例：调研"不建议删"被接受）。
   - **用户报告的"错误消息"可能不是错误，而是正常通知被误判**（#69 实证）：程序把「已移除配置项」的迁移警告当成校验失败触发 `_failed.json` 保护分支，用户被卡在"不能切换配置"。排查链路类故障时先验证报错消息本身是"真失败"还是"通知被误伤"——消息产生端（警告/错误共用返回通道）与消费端（`if 非空` 判定）各自都要查。
@@ -69,6 +69,9 @@
   - **同域测试文件归一纪律**：纯文本/AST 哨兵（断言"源码含某字符串"）被真实行为测试覆盖时删除（test_ui_resize_sync 案例）；同 fixture 的复现测试并入主回归文件（test_maximize_pages_repro 并入 window_state_matrix），文件数减半维护不散。
    - 大范围撤回用 `git revert --no-commit <多提交>` 合并单撤销提交。
    - **多源字段合并按站点优先级取数：区分「站点级故障」与「数据级未命中」，后者不得永久跳过该站**（#90 实证）：`file_crawler` 曾把「请求超时/请求异常/未收录」三类一刀切进同一 `failed` 集——某站「连通但没收录该条目」也被后续所有字段跳过，破坏「A 站拿演员、B 站拿介绍、回 A 站」跨字段穿梭。修复：仅超时/请求异常进 `failed`；「未收录」（请求成功、`data is None` 且无 error）不进 `failed`、不缓存，保留供后续字段重试。**两处都要改**：并发预收集段 `_fetch_site` 与字段合并段，各有一处「未收录→raise→except→failed.add」。**通用教训：数据聚合里"未命中/空结果"是业务常态，绝不可与"通道故障"混同一跳过标记**（呼应 65 条 404 不计错误率、65 条外部探测先分类再设阈值）。
+   - **分发包的打包布局与启动脚本入口假设必须端到端对账**（TRAWL 便携版 1.5.0 首启全炸实证）：打包工作流把源码+依赖打在包根（workspace 局部依赖在 `apps/api/node_modules`），启动脚本却硬编码找 `src\` 子目录、找不到就现场克隆上游 main——克隆副本从未装依赖（安装步骤 cwd 跑错、被随包依赖"no changes"跳过），首启必然 `Cannot find package`。此类缺陷 CI 测不出（打包成功≠首启可用），**发版前必须用解压后的真实布局实测一次启动入口**。附带认知：bun 模块解析会穿透父级 node_modules（最小夹具实测），workspace 局部依赖装在应用目录下，换目录运行源码副本即解析不到；`bun install` 按 cwd 的 package.json/bun.lock 安装，脚本里装依赖必须先进入源码目录。
+   - **大 zip 远程验尸免下载**（1.2GB 便携包定位实证）：GitHub release 资产用 HTTP Range 只读中央目录即可列出全部条目——先 `curl -r 0-0 -D -` 从 Content-Range 拿总大小，再取末 64KB 找 EOCD（`PK\x05\x06`）解出中央目录偏移与大小，range 拉取后按 `PK\x01\x02` 结构遍历文件名。HEAD 请求对 S3 可能返回 Content-Length: 0，必须用 GET+Range。devbox 上 urllib 直连 github releases 会 TLS EOF，curl -L 带 token 可用。
+   - **cmd bat 在 chcp 65001 下解析 UTF-8 中文注释会字节错位**（`'xe: 兼容' is not recognized` 实证）：`:: 定位 redis-server.exe：兼容...` 的尾部片段被截半当命令执行。 cosmetic 但扰人，注释尽量用 rem 且避免紧跟特殊结构。
    - **文件名创建失败（WinError 123）先实测真实失败串再归因，别默认是"非法字符"**（#92 实证）：#92② 归档目录创建报 `[WinError 123] 文件名/目录名/卷标语法不正确`，我初判"标题夹了 Windows 非法字符"、准备给 `render_name` 加清洗；先把日志里那条**确切目录名**抽出跑一遍项目 `sanitize_name` + 逐字符查非法/控制字符 + 码点/字节长度，才发现该串**不含任何常规非法字符**、真因是 `Z:`（115 云盘）服务端文件名长度限制比本地 NTFS 严、72 字节日文目录超限被映射成 123。**教训：① "WinError 123" 常被误归因到非法字符，实际可能是长度（尤其映射云盘 115/夸克）——先取真实字符串实测再定论，别基于推断盲改 `render_name`；② 云盘/网络映射盘（`Z:` 等）的 filename 阈值 devbox 无法验证，给用户的出路是降「软件设置→目录名称最大长度」(`folder_name_max`)或先刮本地盘再同步，不硬改截断代码**。
 
 ## 并发与网络库行为（实测实证）
@@ -123,7 +126,7 @@
 - Instructions:
   - 函数内延迟导入须同步加 scripts/build.py 的 --hidden-import/--collect-all；改依赖/构建脚本/Release 工作流逐项核对。**importlib 动态导入的模块 PyInstaller 静态分析不可靠**（7mmtv 数字开头模块实证），必须显式 --hidden-import 收录，漏收时仅打包版运行时刮削崩溃（源码/CI 均测不出）；`tests/test_build_hidden_imports.py` 哨兵锁定"__init__.py 的 import_module 字面量 ⊆ build.py hidden-import"，新增动态模块自动被 CI 捕获。
   - EXCLUDED_MODULES 中 rich/typer 等只供构建/CLI；Windows curl_cffi.libs 需显式 --add-binary。
-  - Release 发版全自动流程：推送纯数字 tag（`git tag YYYYMMDD && git push origin YYYYMMDD`）触发 `release.yml`（macOS aarch64 + Windows x86_64 双构建 → 自动建 release 页，正文自动取 changelog 当前版本段）；发版前确认 `consts.py` 的 `LOCAL_VERSION`/`VERSION_NAME` 与 changelog 段标题一致、release 产物名规则 `MDCx-<tag>-<平台>-<arch>-<sha7>.<exe|dmg>`（Windows zip 版由 `package-trawl.yml` 单独管道）。
+  - Release 发版全自动流程：推送纯数字 tag（`git tag YYYYMMDD && git push origin YYYYMMDD`）触发 `release.yml`（macOS aarch64 + Windows x86_64 双构建 → 自动建 release 页，正文自动取 changelog 当前版本段）；发版前确认 `consts.py` 的 `LOCAL_VERSION`/`VERSION_NAME` 与 changelog 段标题一致、release 产物名规则 `MDCx-<tag>-<平台>-<arch>-<完整40位sha>.<exe|dmg>`（2026-09-11 实测 20260906 版产物：sha 用 `${{ github.sha }}` 全长不截断；Windows zip 版由 `package-trawl.yml` 单独管道）。
 
 ## 并发与数据
 

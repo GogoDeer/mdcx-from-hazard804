@@ -90,7 +90,16 @@ JavDb 网页版搜索 FC2 内容需要登录 Cookie。「软件设置 → 网络
 
 能。配置自动迁移，已删除站点的旧值自动清理，新增站点（如 7mmtv）自动并入默认源。
 
-## 15. 哪里找完整功能说明与配置详解
+## 15. TRAWL 便携版启动报 `Cannot find package 'elysia'`
+
+这是 trawl-portable-1.5.0-windows.zip 启动脚本的缺陷（v1.5.0 包内脚本首次启动必然触发），两种解决方式任选：
+
+- **免下载修复**：用主仓库 `scripts/windows/start-trawl.bat`（2026-09-11 之后）覆盖包内同名文件，直接重新双击启动——新版脚本直接运行包内自带源码与依赖，完全离线
+- **临时应急**：在解压目录打开命令行执行 `cd src && ..\bun\bun.exe install`，装完再运行 `start-trawl.bat`
+
+后续重新打包的便携版已内置修复脚本。
+
+## 16. 哪里找完整功能说明与配置详解
 
 - **全部功能**：主仓库 `docs/FEATURES.md`
 - **配置逐项说明**：主仓库 `docs/CONFIGURATION.md`
