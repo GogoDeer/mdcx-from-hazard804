@@ -115,6 +115,8 @@ def get_real_url(res_search, file_path, series_ex, date, kind: TheporndbKind):
     actor_number = len(new_file_name.replace(".and.", "&").split("&"))
     temp_file_path_space = re.sub(r"[\W_]", " ", file_path.lower()).replace("  ", " ").replace("  ", " ")
     temp_file_path_nospace = temp_file_path_space.replace(" ", "")
+    # 多候选裁决的相似度基准用去扩展名的文件名（不含目录）——目录名只会引入噪声
+    similarity_target = re.sub(r"[\W_]", " ", os.path.splitext(file_name)[0]).strip()
     try:
         if search_data:
             res_date_list = []
@@ -143,26 +145,32 @@ def get_real_url(res_search, file_path, series_ex, date, kind: TheporndbKind):
 
                 if series_ex:
                     if series_ex == res_series or series_ex in res_url:
-                        if date and res_date == date:
-                            res_date_list.append([res_id_url, res_actor_title_space])
-                        elif res_title_nospace in temp_file_path_nospace:
+                        if res_title_nospace in temp_file_path_nospace:
                             res_title_list.append([res_id_url, res_actor_title_space])
+                        elif date and res_date == date:
+                            res_date_list.append([res_id_url, res_actor_title_space])
                         elif actor_list_nospace and len(actor_list_nospace) >= actor_number:
                             for a in actor_list_nospace:
                                 if a not in temp_file_path_nospace:
                                     break
                             else:
                                 res_actor_list.append([res_id_url, res_actor_title_space])
-                    elif date and res_date == date and res_title_nospace in temp_file_path_nospace:
+                    elif res_title_nospace in temp_file_path_nospace:
+                        # 站点名对不上但标题精确含在文件名里（如厂牌 slug 与实际站点归属不同，议题 #94）
                         res_title_list.append([res_id_url, res_actor_title_space])
                 elif kind == "scenes" or res_title_nospace in temp_file_path_nospace:
                     res_title_list.append([res_id_url, res_actor_title_space])
 
-            for candidate_list in (res_date_list, res_title_list, res_actor_list):
-                if len(candidate_list) == 1:
-                    return candidate_list[0][0]
-                if len(candidate_list):
-                    return max(candidate_list, key=lambda each: similarity(each[1], temp_file_path_space))[0]
+            # 采纳顺序：标题/演员精确命中 > 日期桶。日期桶证据最弱（同日多部作品常态，
+            # 议题 #94 张冠李戴实证），须经相似度裁决，与文件名毫无重合时视为未命中，
+            # 留给下一搜索词或其它站点，宁可未找到也不硬配
+            for candidate_list in (res_title_list, res_actor_list, res_date_list):
+                if not candidate_list:
+                    continue
+                best = max(candidate_list, key=lambda each: similarity(each[1], similarity_target))
+                if candidate_list is res_date_list and similarity(best[1], similarity_target) < 0.35:
+                    continue
+                return best[0]
     except Exception:
         return False
     return False
