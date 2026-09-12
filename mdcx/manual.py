@@ -511,6 +511,7 @@ class ManualConfig:
         "mywife": Website.MYWIFE,
         "lulubar": Website.LULUBAR,
         "theporndb": Website.THEPORNDB,
+        "javstash": Website.JAVSTASH,  # [JavStash]
         "prestige": Website.PRESTIGE,
     }
     CHAR_LIST = [

@@ -282,6 +282,38 @@ def test_no_dead_code_in_core_files():
                     raise AssertionError(f"{file_path} 中存在死代码: {stripped}")
 
 
+# ============================================================
+# Bug: Amazon create_candidate missing detail_url keyword argument
+# ============================================================
+def test_amazon_create_candidate_signature_and_calls():
+    """验证 amazon.py 中 create_candidate 具有默认 detail_url，且各调用处正常传参。"""
+    source = (REPO / "mdcx/core/amazon.py").read_text(encoding="utf-8")
+    assert 'detail_url: str = ""' in source, "create_candidate 未提供 detail_url 默认值"
+    assert "detail_url=normalized_detail_url" in source, "create_candidate 调用处未传递 detail_url"
+
+
+# ============================================================
+# Bug: scraper.py 断点续刮恢复失败文件导致重复追加
+# ============================================================
+def test_scraper_no_duplicate_pending_extend():
+    """验证 scraper.py 不再盲目 extend(pending) 导致列表膨胀，且包含去重保护。"""
+    source = (REPO / "mdcx/core/scraper.py").read_text(encoding="utf-8")
+    assert "movie_list.extend(pending)" not in source, "scraper.py 中仍存在重复追加 pending 的逻辑"
+    assert "list(dict.fromkeys(filtered))" in source, "scraper.py 缺少去重保护"
+
+
+# ============================================================
+# Bug: 间歇刮削因慢任务导致任务入口死锁
+# ============================================================
+def test_interval_scraping_no_dispatch_deadlock():
+    """验证 scraper.py 任务入口未按 counting_order 阻塞新任务，而是按 sleep_end 休息状态流转。"""
+    source = (REPO / "mdcx/core/scraper.py").read_text(encoding="utf-8")
+    assert "count - Flags.rest_now_begin_count > manager.config.rest_count" not in source, (
+        "scraper.py 仍存在按 dispatch counting_order 粗暴阻塞任务的死锁逻辑"
+    )
+    assert "not Flags.sleep_end.is_set()" in source, "scraper.py 缺少 sleep_end 休息状态感知"
+
+
 if __name__ == "__main__":
     import pytest as _pytest
 

@@ -1255,7 +1255,7 @@ async def get_big_pic_by_amazon(
     def create_candidate(
         *,
         url: str,
-        detail_url: str,
+        detail_url: str = "",
         pic_title: str,
         pic_ver: str,
         media_priority: int,

@@ -18,6 +18,7 @@ from ..models.model_types import CrawlersResult
 from ..number import get_number_letters
 from ..utils import clean_list, get_used_time
 from ..utils.language import is_japanese, is_probably_english_for_translation
+from .actor_align import align_actor_with_media_server
 from .mosaic import normalize_mosaic
 
 AVWIKI_SCRAPING_TYPES = {
@@ -268,6 +269,7 @@ def map_actor_names(res: CrawlersResult, all_actors=False):
         if not mapped_name:
             # 映射表缺该语言字段时回落原名，避免 None 混入演员列表污染 NFO（2026-09-23 全面审查）
             mapped_name = name
+        mapped_name = align_actor_with_media_server(name, mapped_name, actor_data)
         if mapped_name not in mapped:
             mapped.append(mapped_name)
 

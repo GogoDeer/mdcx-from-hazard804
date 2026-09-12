@@ -634,3 +634,34 @@ async def test_media_resource_context_dmm_validation_uses_configured_retry_count
 
     request_url = "https://awsimgsrc.dmm.co.jp/pics_dig/digital/video/1sdjs00093/1sdjs00093ps.jpg?w=120&h=90"
     assert calls == [request_url, request_url]
+
+
+@pytest.mark.asyncio
+async def test_read_stream_content_uses_preloaded_content():
+    class _FakeRespWithContent:
+        content = b"already-loaded-image-bytes"
+
+        async def aiter_content(self, chunk_size):
+            raise AssertionError("aiter_content should not be called when content is already present")
+
+    res = await MediaResourceContext._read_stream_content(_FakeRespWithContent())
+    assert res == b"already-loaded-image-bytes"
+
+
+@pytest.mark.asyncio
+async def test_read_stream_content_times_out_on_stalled_stream(monkeypatch: pytest.MonkeyPatch):
+    class _StalledStreamResp:
+        content = b""
+
+        async def aiter_content(self, chunk_size):
+            await asyncio.sleep(100)
+            yield b"never-reached"
+
+    # Test with very small timeout to verify timeout safety
+    async def fast_read():
+        async with asyncio.timeout(0.05):
+            async for _ in _StalledStreamResp().aiter_content(1024):
+                pass
+
+    with pytest.raises(TimeoutError):
+        await fast_read()
