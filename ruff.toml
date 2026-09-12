@@ -28,6 +28,7 @@ exclude = [
     "venv",
     "*_generated.py",
     "**/views/*.py",
+    ".planning",
 ]
 
 # Same as Black.
