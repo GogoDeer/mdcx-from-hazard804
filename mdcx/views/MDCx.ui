@@ -21174,7 +21174,7 @@
                       <x>0</x>
                       <y>0</y>
                       <width>860</width>
-                      <height>1880</height>
+                      <height>2200</height>
                     </rect>
                   </property>
                   <widget class="QGroupBox" name="groupBox_10">
@@ -22317,7 +22317,7 @@
                     <property name="geometry">
                       <rect>
                         <x>30</x>
-                        <y>1536</y>
+                        <y>1850</y>
                         <width>701</width>
                         <height>301</height>
                       </rect>
@@ -22510,14 +22510,14 @@
                         <x>30</x>
                         <y>1291</y>
                         <width>701</width>
-                        <height>230</height>
+                        <height>540</height>
                       </rect>
                     </property>
                     <property name="styleSheet">
                       <string notr="true">font:"Courier New";</string>
                     </property>
                     <property name="title">
-                      <string>API Token</string>
+                      <string>API Token / Stash-Box</string>
                     </property>
                     <widget class="QWidget" name="gridLayoutWidget_11">
                       <property name="geometry">
@@ -22757,6 +22757,367 @@
                               </widget>
                             </item>
                           </layout>
+                        </item>
+                      </layout>
+                    </widget>
+                    <widget class="QWidget" name="gridLayoutWidget_javstash">
+                      <property name="geometry">
+                        <rect>
+                          <x>20</x>
+                          <y>220</y>
+                          <width>661</width>
+                          <height>300</height>
+                        </rect>
+                      </property>
+                      <layout class="QGridLayout" name="gridLayout_javstash">
+                        <item row="0" column="0">
+                          <widget class="QLabel" name="label_javstash_url">
+                            <property name="sizePolicy">
+                              <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+                                <horstretch>0</horstretch>
+                                <verstretch>0</verstretch>
+                              </sizepolicy>
+                            </property>
+                            <property name="minimumSize">
+                              <size>
+                                <width>130</width>
+                                <height>30</height>
+                              </size>
+                            </property>
+                            <property name="layoutDirection">
+                              <enum>Qt::RightToLeft</enum>
+                            </property>
+                            <property name="text">
+                              <string>JavStash 地址：</string>
+                            </property>
+                            <property name="alignment">
+                              <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+                            </property>
+                          </widget>
+                        </item>
+                        <item row="0" column="1">
+                          <widget class="QLineEdit" name="lineEdit_javstash_url">
+                            <property name="sizePolicy">
+                              <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
+                                <horstretch>0</horstretch>
+                                <verstretch>0</verstretch>
+                              </sizepolicy>
+                            </property>
+                            <property name="minimumSize">
+                              <size>
+                                <width>300</width>
+                                <height>30</height>
+                              </size>
+                            </property>
+                            <property name="styleSheet">
+                              <string notr="true"> font: "Courier New";
+                                border: 1px solid rgba(0,0,0, 50);
+                                border-radius: 15px;
+</string>
+                            </property>
+                            <property name="text">
+                              <string>https://javstash.org</string>
+                            </property>
+                          </widget>
+                        </item>
+                        <item row="1" column="0">
+                          <widget class="QLabel" name="label_javstash_api_key">
+                            <property name="sizePolicy">
+                              <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+                                <horstretch>0</horstretch>
+                                <verstretch>0</verstretch>
+                              </sizepolicy>
+                            </property>
+                            <property name="minimumSize">
+                              <size>
+                                <width>130</width>
+                                <height>30</height>
+                              </size>
+                            </property>
+                            <property name="layoutDirection">
+                              <enum>Qt::RightToLeft</enum>
+                            </property>
+                            <property name="text">
+                              <string>JavStash API Key：</string>
+                            </property>
+                            <property name="alignment">
+                              <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+                            </property>
+                          </widget>
+                        </item>
+                        <item row="1" column="1">
+                          <widget class="QLineEdit" name="lineEdit_javstash_api_key">
+                            <property name="sizePolicy">
+                              <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
+                                <horstretch>0</horstretch>
+                                <verstretch>0</verstretch>
+                              </sizepolicy>
+                            </property>
+                            <property name="minimumSize">
+                              <size>
+                                <width>300</width>
+                                <height>30</height>
+                              </size>
+                            </property>
+                            <property name="styleSheet">
+                              <string notr="true"> font: "Courier New";
+                                border: 1px solid rgba(0,0,0, 50);
+                                border-radius: 15px;
+</string>
+                            </property>
+                          </widget>
+                        </item>
+                        <item row="2" column="1">
+                          <layout class="QHBoxLayout" name="horizontalLayout_javstash">
+                            <item>
+                              <widget class="QPushButton" name="pushButton_test_javstash">
+                                <property name="sizePolicy">
+                                  <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+                                    <horstretch>0</horstretch>
+                                    <verstretch>0</verstretch>
+                                  </sizepolicy>
+                                </property>
+                                <property name="minimumSize">
+                                  <size>
+                                    <width>80</width>
+                                    <height>30</height>
+                                  </size>
+                                </property>
+                                <property name="text">
+                                  <string>测试连接</string>
+                                </property>
+                              </widget>
+                            </item>
+                            <item>
+                              <widget class="QLabel" name="label_javstash_test_result">
+                                <property name="sizePolicy">
+                                  <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
+                                    <horstretch>0</horstretch>
+                                    <verstretch>0</verstretch>
+                                  </sizepolicy>
+                                </property>
+                                <property name="text">
+                                  <string/>
+                                </property>
+                              </widget>
+                            </item>
+                          </layout>
+                        </item>
+                        <item row="3" column="0" colspan="2">
+                          <widget class="QLabel" name="label_javstash_guide">
+                            <property name="sizePolicy">
+                              <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
+                                <horstretch>0</horstretch>
+                                <verstretch>0</verstretch>
+                              </sizepolicy>
+                            </property>
+                            <property name="styleSheet">
+                              <string notr="true">color: rgb(8, 128, 128);</string>
+                            </property>
+                            <property name="text">
+                              <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;a
+                                href="https://javstash.org/"&gt;&lt;span style="
+                                text-decoration: underline;
+                                color:#094fd1;"&gt;https://javstash.org/&lt;/span&gt;&lt;/a&gt;
+                                注册登录后，在 Settings - Security - API Keys 创建密钥填入此处。&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+                            </property>
+                            <property name="scaledContents">
+                              <bool>true</bool>
+                            </property>
+                            <property name="alignment">
+                              <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignTop</set>
+                            </property>
+                            <property name="wordWrap">
+                              <bool>true</bool>
+                            </property>
+                            <property name="openExternalLinks">
+                              <bool>true</bool>
+                            </property>
+                            <property name="textInteractionFlags">
+                              <set>Qt::LinksAccessibleByKeyboard|Qt::LinksAccessibleByMouse</set>
+                            </property>
+                          </widget>
+                        </item>
+                        <item row="4" column="0">
+                          <widget class="QLabel" name="label_stashdb_url">
+                            <property name="sizePolicy">
+                              <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+                                <horstretch>0</horstretch>
+                                <verstretch>0</verstretch>
+                              </sizepolicy>
+                            </property>
+                            <property name="minimumSize">
+                              <size>
+                                <width>130</width>
+                                <height>30</height>
+                              </size>
+                            </property>
+                            <property name="layoutDirection">
+                              <enum>Qt::RightToLeft</enum>
+                            </property>
+                            <property name="text">
+                              <string>StashDB 地址：</string>
+                            </property>
+                            <property name="alignment">
+                              <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+                            </property>
+                          </widget>
+                        </item>
+                        <item row="4" column="1">
+                          <widget class="QLineEdit" name="lineEdit_stashdb_url">
+                            <property name="sizePolicy">
+                              <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
+                                <horstretch>0</horstretch>
+                                <verstretch>0</verstretch>
+                              </sizepolicy>
+                            </property>
+                            <property name="minimumSize">
+                              <size>
+                                <width>300</width>
+                                <height>30</height>
+                              </size>
+                            </property>
+                            <property name="styleSheet">
+                              <string notr="true"> font: "Courier New";
+                                border: 1px solid rgba(0,0,0, 50);
+                                border-radius: 15px;
+</string>
+                            </property>
+                            <property name="text">
+                              <string>https://stashdb.org</string>
+                            </property>
+                          </widget>
+                        </item>
+                        <item row="5" column="0">
+                          <widget class="QLabel" name="label_stashdb_api_key">
+                            <property name="sizePolicy">
+                              <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+                                <horstretch>0</horstretch>
+                                <verstretch>0</verstretch>
+                              </sizepolicy>
+                            </property>
+                            <property name="minimumSize">
+                              <size>
+                                <width>130</width>
+                                <height>30</height>
+                              </size>
+                            </property>
+                            <property name="layoutDirection">
+                              <enum>Qt::RightToLeft</enum>
+                            </property>
+                            <property name="text">
+                              <string>StashDB API Key：</string>
+                            </property>
+                            <property name="alignment">
+                              <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+                            </property>
+                          </widget>
+                        </item>
+                        <item row="5" column="1">
+                          <widget class="QLineEdit" name="lineEdit_stashdb_api_key">
+                            <property name="sizePolicy">
+                              <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
+                                <horstretch>0</horstretch>
+                                <verstretch>0</verstretch>
+                              </sizepolicy>
+                            </property>
+                            <property name="minimumSize">
+                              <size>
+                                <width>300</width>
+                                <height>30</height>
+                              </size>
+                            </property>
+                            <property name="styleSheet">
+                              <string notr="true"> font: "Courier New";
+                                border: 1px solid rgba(0,0,0, 50);
+                                border-radius: 15px;
+</string>
+                            </property>
+                          </widget>
+                        </item>
+                        <item row="6" column="1">
+                          <layout class="QHBoxLayout" name="horizontalLayout_stashdb">
+                            <item>
+                              <widget class="QPushButton" name="pushButton_test_stashdb">
+                                <property name="sizePolicy">
+                                  <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+                                    <horstretch>0</horstretch>
+                                    <verstretch>0</verstretch>
+                                  </sizepolicy>
+                                </property>
+                                <property name="minimumSize">
+                                  <size>
+                                    <width>80</width>
+                                    <height>30</height>
+                                  </size>
+                                </property>
+                                <property name="text">
+                                  <string>测试连接</string>
+                                </property>
+                              </widget>
+                            </item>
+                            <item>
+                              <widget class="QLabel" name="label_stashdb_test_result">
+                                <property name="sizePolicy">
+                                  <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
+                                    <horstretch>0</horstretch>
+                                    <verstretch>0</verstretch>
+                                  </sizepolicy>
+                                </property>
+                                <property name="text">
+                                  <string/>
+                                </property>
+                              </widget>
+                            </item>
+                          </layout>
+                        </item>
+                        <item row="7" column="0" colspan="2">
+                          <widget class="QLabel" name="label_stashdb_guide">
+                            <property name="sizePolicy">
+                              <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
+                                <horstretch>0</horstretch>
+                                <verstretch>0</verstretch>
+                              </sizepolicy>
+                            </property>
+                            <property name="styleSheet">
+                              <string notr="true">color: rgb(8, 128, 128);</string>
+                            </property>
+                            <property name="text">
+                              <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;a
+                                href="https://stashdb.org/"&gt;&lt;span style="
+                                text-decoration: underline;
+                                color:#094fd1;"&gt;https://stashdb.org/&lt;/span&gt;&lt;/a&gt;
+                                注册登录后，在 Settings - Security - API Keys 创建密钥填入此处。若留空则跳过 StashDB 检索。&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+                            </property>
+                            <property name="scaledContents">
+                              <bool>true</bool>
+                            </property>
+                            <property name="alignment">
+                              <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignTop</set>
+                            </property>
+                            <property name="wordWrap">
+                              <bool>true</bool>
+                            </property>
+                            <property name="openExternalLinks">
+                              <bool>true</bool>
+                            </property>
+                            <property name="textInteractionFlags">
+                              <set>Qt::LinksAccessibleByKeyboard|Qt::LinksAccessibleByMouse</set>
+                            </property>
+                          </widget>
+                        </item>
+                        <item row="8" column="1">
+                          <widget class="QCheckBox" name="checkBox_use_phash_number">
+                            <property name="sizePolicy">
+                              <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+                                <horstretch>0</horstretch>
+                                <verstretch>0</verstretch>
+                              </sizepolicy>
+                            </property>
+                            <property name="text">
+                              <string>优先使用视频指纹 (pHash/OSHASH) 提取番号（支持 JavStash 与 StashDB）</string>
+                            </property>
+                          </widget>
                         </item>
                       </layout>
                     </widget>

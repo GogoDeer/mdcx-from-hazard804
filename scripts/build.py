@@ -207,6 +207,11 @@ class BuildManager:
             # PyInstaller 静态分析不可靠, 必须显式收录否则打包版运行时刮削崩溃)
             "--hidden-import",
             "mdcx.crawlers.7mmtv",
+            # [JavStash] 文件指纹计算依赖 (oshash, av)
+            "--hidden-import",
+            "oshash",
+            "--collect-all",
+            "av",
             "--collect-all",
             "defusedxml",
             "--collect-all",
@@ -389,6 +394,9 @@ class BuildManager:
         # release 构建在 Windows runner 直接失败（v2.0.7 tag 20260905 实证）。
         # 固定 UTF-8 + errors=replace 兜底未知字节。
         try:
+            # [Fix] 显式设置 PYTHONIOENCODING=utf-8，防止子进程非 ASCII 输出在 Windows 默认代码页下崩溃
+            sub_env = os.environ.copy()
+            sub_env["PYTHONIOENCODING"] = "utf-8"
             result = subprocess.run(
                 args,
                 stdout=subprocess.PIPE,
@@ -396,6 +404,7 @@ class BuildManager:
                 text=True,
                 encoding="utf-8",
                 errors="replace",
+                env=sub_env,
             )
             logger.debug(result.stdout.strip())
         except Exception as exc:

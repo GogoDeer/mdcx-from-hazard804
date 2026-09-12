@@ -489,7 +489,7 @@ class Ui_MDCx(object):
         self.pushButton_show_hide_logs.setText("")
         icon = QtGui.QIcon()
         icon.addPixmap(
-            QtGui.QPixmap("mdcx/views/../../MDCx-py-20220407/edit.png"), QtGui.QIcon.Mode.Normal, QtGui.QIcon.State.On
+            QtGui.QPixmap("mdcx/views\\../../MDCx-py-20220407/edit.png"), QtGui.QIcon.Mode.Normal, QtGui.QIcon.State.On
         )
         self.pushButton_show_hide_logs.setIcon(icon)
         self.pushButton_show_hide_logs.setIconSize(QtCore.QSize(30, 30))
@@ -10066,7 +10066,7 @@ class Ui_MDCx(object):
         self.scrollArea_3.setWidgetResizable(True)
         self.scrollArea_3.setObjectName("scrollArea_3")
         self.scrollAreaWidgetContents_wangluo = QtWidgets.QWidget()
-        self.scrollAreaWidgetContents_wangluo.setGeometry(QtCore.QRect(0, 0, 860, 1880))
+        self.scrollAreaWidgetContents_wangluo.setGeometry(QtCore.QRect(0, 0, 860, 2200))
         self.scrollAreaWidgetContents_wangluo.setObjectName("scrollAreaWidgetContents_wangluo")
         self.groupBox_10 = QtWidgets.QGroupBox(parent=self.scrollAreaWidgetContents_wangluo)
         self.groupBox_10.setGeometry(QtCore.QRect(30, 605, 701, 671))
@@ -10667,7 +10667,7 @@ class Ui_MDCx(object):
         self.checkBox_verify_ssl.setObjectName("checkBox_verify_ssl")
         self.gridLayout_9.addWidget(self.checkBox_verify_ssl, 9, 1, 1, 1)
         self.groupBox_44 = QtWidgets.QGroupBox(parent=self.scrollAreaWidgetContents_wangluo)
-        self.groupBox_44.setGeometry(QtCore.QRect(30, 1536, 701, 301))
+        self.groupBox_44.setGeometry(QtCore.QRect(30, 1850, 701, 301))
         self.groupBox_44.setStyleSheet('font:"Courier New";')
         self.groupBox_44.setObjectName("groupBox_44")
         self.gridLayoutWidget = QtWidgets.QWidget(parent=self.groupBox_44)
@@ -10766,7 +10766,7 @@ class Ui_MDCx(object):
         self.gridLayout_12.addWidget(self.label_136, 6, 1, 1, 1)
         self.gridLayout_12.setColumnStretch(0, 2)
         self.groupBox_14 = QtWidgets.QGroupBox(parent=self.scrollAreaWidgetContents_wangluo)
-        self.groupBox_14.setGeometry(QtCore.QRect(30, 1291, 701, 230))
+        self.groupBox_14.setGeometry(QtCore.QRect(30, 1291, 701, 540))
         self.groupBox_14.setStyleSheet('font:"Courier New";')
         self.groupBox_14.setObjectName("groupBox_14")
         self.gridLayoutWidget_11 = QtWidgets.QWidget(parent=self.groupBox_14)
@@ -10916,6 +10916,220 @@ class Ui_MDCx(object):
         self.label_422.setObjectName("label_422")
         self.horizontalLayout_150.addWidget(self.label_422)
         self.gridLayout_65.addLayout(self.horizontalLayout_150, 4, 1, 1, 1)
+        self.gridLayoutWidget_javstash = QtWidgets.QWidget(parent=self.groupBox_14)
+        self.gridLayoutWidget_javstash.setGeometry(QtCore.QRect(20, 220, 661, 300))
+        self.gridLayoutWidget_javstash.setObjectName("gridLayoutWidget_javstash")
+        self.gridLayout_javstash = QtWidgets.QGridLayout(self.gridLayoutWidget_javstash)
+        self.gridLayout_javstash.setContentsMargins(0, 0, 0, 0)
+        self.gridLayout_javstash.setObjectName("gridLayout_javstash")
+        self.label_javstash_url = QtWidgets.QLabel(parent=self.gridLayoutWidget_javstash)
+        sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Policy.Fixed, QtWidgets.QSizePolicy.Policy.Preferred)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(self.label_javstash_url.sizePolicy().hasHeightForWidth())
+        self.label_javstash_url.setSizePolicy(sizePolicy)
+        self.label_javstash_url.setMinimumSize(QtCore.QSize(130, 30))
+        self.label_javstash_url.setLayoutDirection(QtCore.Qt.LayoutDirection.RightToLeft)
+        self.label_javstash_url.setAlignment(
+            QtCore.Qt.AlignmentFlag.AlignRight
+            | QtCore.Qt.AlignmentFlag.AlignTrailing
+            | QtCore.Qt.AlignmentFlag.AlignVCenter
+        )
+        self.label_javstash_url.setObjectName("label_javstash_url")
+        self.gridLayout_javstash.addWidget(self.label_javstash_url, 0, 0, 1, 1)
+        self.lineEdit_javstash_url = QtWidgets.QLineEdit(parent=self.gridLayoutWidget_javstash)
+        sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Policy.Minimum, QtWidgets.QSizePolicy.Policy.Fixed)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(self.lineEdit_javstash_url.sizePolicy().hasHeightForWidth())
+        self.lineEdit_javstash_url.setSizePolicy(sizePolicy)
+        self.lineEdit_javstash_url.setMinimumSize(QtCore.QSize(300, 30))
+        self.lineEdit_javstash_url.setStyleSheet(
+            ' font: "Courier New";\n'
+            "                                border: 1px solid rgba(0,0,0, 50);\n"
+            "                                border-radius: 15px;\n"
+            ""
+        )
+        self.lineEdit_javstash_url.setObjectName("lineEdit_javstash_url")
+        self.gridLayout_javstash.addWidget(self.lineEdit_javstash_url, 0, 1, 1, 1)
+        self.label_javstash_api_key = QtWidgets.QLabel(parent=self.gridLayoutWidget_javstash)
+        sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Policy.Fixed, QtWidgets.QSizePolicy.Policy.Preferred)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(self.label_javstash_api_key.sizePolicy().hasHeightForWidth())
+        self.label_javstash_api_key.setSizePolicy(sizePolicy)
+        self.label_javstash_api_key.setMinimumSize(QtCore.QSize(130, 30))
+        self.label_javstash_api_key.setLayoutDirection(QtCore.Qt.LayoutDirection.RightToLeft)
+        self.label_javstash_api_key.setAlignment(
+            QtCore.Qt.AlignmentFlag.AlignRight
+            | QtCore.Qt.AlignmentFlag.AlignTrailing
+            | QtCore.Qt.AlignmentFlag.AlignVCenter
+        )
+        self.label_javstash_api_key.setObjectName("label_javstash_api_key")
+        self.gridLayout_javstash.addWidget(self.label_javstash_api_key, 1, 0, 1, 1)
+        self.lineEdit_javstash_api_key = QtWidgets.QLineEdit(parent=self.gridLayoutWidget_javstash)
+        sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Policy.Minimum, QtWidgets.QSizePolicy.Policy.Fixed)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(self.lineEdit_javstash_api_key.sizePolicy().hasHeightForWidth())
+        self.lineEdit_javstash_api_key.setSizePolicy(sizePolicy)
+        self.lineEdit_javstash_api_key.setMinimumSize(QtCore.QSize(300, 30))
+        self.lineEdit_javstash_api_key.setStyleSheet(
+            ' font: "Courier New";\n'
+            "                                border: 1px solid rgba(0,0,0, 50);\n"
+            "                                border-radius: 15px;\n"
+            ""
+        )
+        self.lineEdit_javstash_api_key.setObjectName("lineEdit_javstash_api_key")
+        self.gridLayout_javstash.addWidget(self.lineEdit_javstash_api_key, 1, 1, 1, 1)
+        self.horizontalLayout_javstash = QtWidgets.QHBoxLayout()
+        self.horizontalLayout_javstash.setObjectName("horizontalLayout_javstash")
+        self.pushButton_test_javstash = QtWidgets.QPushButton(parent=self.gridLayoutWidget_javstash)
+        sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Policy.Fixed, QtWidgets.QSizePolicy.Policy.Fixed)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(self.pushButton_test_javstash.sizePolicy().hasHeightForWidth())
+        self.pushButton_test_javstash.setSizePolicy(sizePolicy)
+        self.pushButton_test_javstash.setMinimumSize(QtCore.QSize(80, 30))
+        self.pushButton_test_javstash.setObjectName("pushButton_test_javstash")
+        self.horizontalLayout_javstash.addWidget(self.pushButton_test_javstash)
+        self.label_javstash_test_result = QtWidgets.QLabel(parent=self.gridLayoutWidget_javstash)
+        sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Policy.Minimum, QtWidgets.QSizePolicy.Policy.Fixed)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(self.label_javstash_test_result.sizePolicy().hasHeightForWidth())
+        self.label_javstash_test_result.setSizePolicy(sizePolicy)
+        self.label_javstash_test_result.setText("")
+        self.label_javstash_test_result.setObjectName("label_javstash_test_result")
+        self.horizontalLayout_javstash.addWidget(self.label_javstash_test_result)
+        self.gridLayout_javstash.addLayout(self.horizontalLayout_javstash, 2, 1, 1, 1)
+        self.label_javstash_guide = QtWidgets.QLabel(parent=self.gridLayoutWidget_javstash)
+        sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Policy.Minimum, QtWidgets.QSizePolicy.Policy.Fixed)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(self.label_javstash_guide.sizePolicy().hasHeightForWidth())
+        self.label_javstash_guide.setSizePolicy(sizePolicy)
+        self.label_javstash_guide.setStyleSheet("color: rgb(8, 128, 128);")
+        self.label_javstash_guide.setScaledContents(True)
+        self.label_javstash_guide.setAlignment(
+            QtCore.Qt.AlignmentFlag.AlignLeading | QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignTop
+        )
+        self.label_javstash_guide.setWordWrap(True)
+        self.label_javstash_guide.setOpenExternalLinks(True)
+        self.label_javstash_guide.setTextInteractionFlags(
+            QtCore.Qt.TextInteractionFlag.LinksAccessibleByKeyboard
+            | QtCore.Qt.TextInteractionFlag.LinksAccessibleByMouse
+        )
+        self.label_javstash_guide.setObjectName("label_javstash_guide")
+        self.gridLayout_javstash.addWidget(self.label_javstash_guide, 3, 0, 1, 2)
+        self.label_stashdb_url = QtWidgets.QLabel(parent=self.gridLayoutWidget_javstash)
+        sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Policy.Fixed, QtWidgets.QSizePolicy.Policy.Preferred)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(self.label_stashdb_url.sizePolicy().hasHeightForWidth())
+        self.label_stashdb_url.setSizePolicy(sizePolicy)
+        self.label_stashdb_url.setMinimumSize(QtCore.QSize(130, 30))
+        self.label_stashdb_url.setLayoutDirection(QtCore.Qt.LayoutDirection.RightToLeft)
+        self.label_stashdb_url.setAlignment(
+            QtCore.Qt.AlignmentFlag.AlignRight
+            | QtCore.Qt.AlignmentFlag.AlignTrailing
+            | QtCore.Qt.AlignmentFlag.AlignVCenter
+        )
+        self.label_stashdb_url.setObjectName("label_stashdb_url")
+        self.gridLayout_javstash.addWidget(self.label_stashdb_url, 4, 0, 1, 1)
+        self.lineEdit_stashdb_url = QtWidgets.QLineEdit(parent=self.gridLayoutWidget_javstash)
+        sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Policy.Minimum, QtWidgets.QSizePolicy.Policy.Fixed)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(self.lineEdit_stashdb_url.sizePolicy().hasHeightForWidth())
+        self.lineEdit_stashdb_url.setSizePolicy(sizePolicy)
+        self.lineEdit_stashdb_url.setMinimumSize(QtCore.QSize(300, 30))
+        self.lineEdit_stashdb_url.setStyleSheet(
+            ' font: "Courier New";\n'
+            "                                border: 1px solid rgba(0,0,0, 50);\n"
+            "                                border-radius: 15px;\n"
+            ""
+        )
+        self.lineEdit_stashdb_url.setObjectName("lineEdit_stashdb_url")
+        self.gridLayout_javstash.addWidget(self.lineEdit_stashdb_url, 4, 1, 1, 1)
+        self.label_stashdb_api_key = QtWidgets.QLabel(parent=self.gridLayoutWidget_javstash)
+        sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Policy.Fixed, QtWidgets.QSizePolicy.Policy.Preferred)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(self.label_stashdb_api_key.sizePolicy().hasHeightForWidth())
+        self.label_stashdb_api_key.setSizePolicy(sizePolicy)
+        self.label_stashdb_api_key.setMinimumSize(QtCore.QSize(130, 30))
+        self.label_stashdb_api_key.setLayoutDirection(QtCore.Qt.LayoutDirection.RightToLeft)
+        self.label_stashdb_api_key.setAlignment(
+            QtCore.Qt.AlignmentFlag.AlignRight
+            | QtCore.Qt.AlignmentFlag.AlignTrailing
+            | QtCore.Qt.AlignmentFlag.AlignVCenter
+        )
+        self.label_stashdb_api_key.setObjectName("label_stashdb_api_key")
+        self.gridLayout_javstash.addWidget(self.label_stashdb_api_key, 5, 0, 1, 1)
+        self.lineEdit_stashdb_api_key = QtWidgets.QLineEdit(parent=self.gridLayoutWidget_javstash)
+        sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Policy.Minimum, QtWidgets.QSizePolicy.Policy.Fixed)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(self.lineEdit_stashdb_api_key.sizePolicy().hasHeightForWidth())
+        self.lineEdit_stashdb_api_key.setSizePolicy(sizePolicy)
+        self.lineEdit_stashdb_api_key.setMinimumSize(QtCore.QSize(300, 30))
+        self.lineEdit_stashdb_api_key.setStyleSheet(
+            ' font: "Courier New";\n'
+            "                                border: 1px solid rgba(0,0,0, 50);\n"
+            "                                border-radius: 15px;\n"
+            ""
+        )
+        self.lineEdit_stashdb_api_key.setObjectName("lineEdit_stashdb_api_key")
+        self.gridLayout_javstash.addWidget(self.lineEdit_stashdb_api_key, 5, 1, 1, 1)
+        self.horizontalLayout_stashdb = QtWidgets.QHBoxLayout()
+        self.horizontalLayout_stashdb.setObjectName("horizontalLayout_stashdb")
+        self.pushButton_test_stashdb = QtWidgets.QPushButton(parent=self.gridLayoutWidget_javstash)
+        sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Policy.Fixed, QtWidgets.QSizePolicy.Policy.Fixed)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(self.pushButton_test_stashdb.sizePolicy().hasHeightForWidth())
+        self.pushButton_test_stashdb.setSizePolicy(sizePolicy)
+        self.pushButton_test_stashdb.setMinimumSize(QtCore.QSize(80, 30))
+        self.pushButton_test_stashdb.setObjectName("pushButton_test_stashdb")
+        self.horizontalLayout_stashdb.addWidget(self.pushButton_test_stashdb)
+        self.label_stashdb_test_result = QtWidgets.QLabel(parent=self.gridLayoutWidget_javstash)
+        sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Policy.Minimum, QtWidgets.QSizePolicy.Policy.Fixed)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(self.label_stashdb_test_result.sizePolicy().hasHeightForWidth())
+        self.label_stashdb_test_result.setSizePolicy(sizePolicy)
+        self.label_stashdb_test_result.setText("")
+        self.label_stashdb_test_result.setObjectName("label_stashdb_test_result")
+        self.horizontalLayout_stashdb.addWidget(self.label_stashdb_test_result)
+        self.gridLayout_javstash.addLayout(self.horizontalLayout_stashdb, 6, 1, 1, 1)
+        self.label_stashdb_guide = QtWidgets.QLabel(parent=self.gridLayoutWidget_javstash)
+        sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Policy.Minimum, QtWidgets.QSizePolicy.Policy.Fixed)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(self.label_stashdb_guide.sizePolicy().hasHeightForWidth())
+        self.label_stashdb_guide.setSizePolicy(sizePolicy)
+        self.label_stashdb_guide.setStyleSheet("color: rgb(8, 128, 128);")
+        self.label_stashdb_guide.setScaledContents(True)
+        self.label_stashdb_guide.setAlignment(
+            QtCore.Qt.AlignmentFlag.AlignLeading | QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignTop
+        )
+        self.label_stashdb_guide.setWordWrap(True)
+        self.label_stashdb_guide.setOpenExternalLinks(True)
+        self.label_stashdb_guide.setTextInteractionFlags(
+            QtCore.Qt.TextInteractionFlag.LinksAccessibleByKeyboard
+            | QtCore.Qt.TextInteractionFlag.LinksAccessibleByMouse
+        )
+        self.label_stashdb_guide.setObjectName("label_stashdb_guide")
+        self.gridLayout_javstash.addWidget(self.label_stashdb_guide, 7, 0, 1, 2)
+        self.checkBox_use_phash_number = QtWidgets.QCheckBox(parent=self.gridLayoutWidget_javstash)
+        sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Policy.Fixed, QtWidgets.QSizePolicy.Policy.Fixed)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(self.checkBox_use_phash_number.sizePolicy().hasHeightForWidth())
+        self.checkBox_use_phash_number.setSizePolicy(sizePolicy)
+        self.checkBox_use_phash_number.setObjectName("checkBox_use_phash_number")
+        self.gridLayout_javstash.addWidget(self.checkBox_use_phash_number, 8, 1, 1, 1)
         self.scrollArea_3.setWidget(self.scrollAreaWidgetContents_wangluo)
         self.tabWidget.addTab(self.tab3, "")
         self.tab5 = QtWidgets.QWidget()
@@ -13973,7 +14187,7 @@ class Ui_MDCx(object):
                 "<html><head/><body><p>必须安装 Chrome 浏览器。可处理某些无法获取的网站，内存占用会显著提高</p></body></html>",
             )
         )
-        self.groupBox_14.setTitle(_translate("MDCx", "API Token"))
+        self.groupBox_14.setTitle(_translate("MDCx", "API Token / Stash-Box"))
         self.label_355.setText(_translate("MDCx", "ThePornDB："))
         self.label_423_wl.setText(_translate("MDCx", "TMDB API地址："))
         self.lineEdit_tmdb_api_base.setText(_translate("MDCx", "api.tmdb.org"))
@@ -13996,6 +14210,37 @@ class Ui_MDCx(object):
                 "\n"
                 "                                    <html><head/><body><p>该网站的Hash值匹配结果可能错误</p></body></html>",
             )
+        )
+        self.label_javstash_url.setText(_translate("MDCx", "JavStash 地址："))
+        self.lineEdit_javstash_url.setText(_translate("MDCx", "https://javstash.org"))
+        self.label_javstash_api_key.setText(_translate("MDCx", "JavStash API Key："))
+        self.pushButton_test_javstash.setText(_translate("MDCx", "测试连接"))
+        self.label_javstash_guide.setText(
+            _translate(
+                "MDCx",
+                "<html><head/><body><p><a\n"
+                '                                href="https://javstash.org/"><span style="\n'
+                "                                text-decoration: underline;\n"
+                '                                color:#094fd1;">https://javstash.org/</span></a>\n'
+                "                                注册登录后，在 Settings - Security - API Keys 创建密钥填入此处。</p></body></html>",
+            )
+        )
+        self.label_stashdb_url.setText(_translate("MDCx", "StashDB 地址："))
+        self.lineEdit_stashdb_url.setText(_translate("MDCx", "https://stashdb.org"))
+        self.label_stashdb_api_key.setText(_translate("MDCx", "StashDB API Key："))
+        self.pushButton_test_stashdb.setText(_translate("MDCx", "测试连接"))
+        self.label_stashdb_guide.setText(
+            _translate(
+                "MDCx",
+                "<html><head/><body><p><a\n"
+                '                                href="https://stashdb.org/"><span style="\n'
+                "                                text-decoration: underline;\n"
+                '                                color:#094fd1;">https://stashdb.org/</span></a>\n'
+                "                                注册登录后，在 Settings - Security - API Keys 创建密钥填入此处。若留空则跳过 StashDB 检索。</p></body></html>",
+            )
+        )
+        self.checkBox_use_phash_number.setText(
+            _translate("MDCx", "优先使用视频指纹 (pHash/OSHASH) 提取番号（支持 JavStash 与 StashDB）")
         )
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab3), _translate("MDCx", " 网络 "))
         self.groupBox_17.setTitle(_translate("MDCx", "保存日志"))

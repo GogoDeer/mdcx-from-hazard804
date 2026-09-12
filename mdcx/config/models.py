@@ -168,6 +168,7 @@ SENSITIVE_FIELDS = frozenset(
         "llm_key",
         "api_key",
         "theporndb_api_token",
+        "javstash_api_key",  # [JavStash]
         "tmdb_api_key",
         "javdb",
         "fc2ppvdb",
@@ -457,7 +458,7 @@ class Config(BaseModel):
         title="FC2网站源",
     )
     website_oumei: list[Website] = Field(
-        default_factory=lambda: [Website.THEPORNDB, Website.AVHEAT],
+        default_factory=lambda: [Website.STASHDB, Website.THEPORNDB, Website.AVHEAT],
         title="欧美网站源",
     )
     website_guochan: list[Website] = Field(
@@ -669,6 +670,7 @@ class Config(BaseModel):
     actor_filter_only: bool = Field(default=True, title="只获取演员类型")
     actor_deduplicate: bool = Field(default=True, title="重复演员去重")
     actor_photo_kodi_auto: bool = Field(default=False, title="演员照片Kodi自动")
+    align_media_server_actors: bool = Field(default=True, title="优先使用媒体服务器已有的演员名字")
     # endregion
 
     # region: Watermark Settings
@@ -741,6 +743,17 @@ class Config(BaseModel):
     timeout: int = Field(default=10, title="超时")
     retry: int = Field(default=3, title="重试")
     theporndb_api_token: str = Field(default="", title="Theporndb API令牌")
+    # [JavStash] JavStash API密钥与服务地址
+    javstash_api_key: str = Field(default="", title="JavStash API密钥")
+    javstash_url: str = Field(default="https://javstash.org", title="JavStash 地址")
+    # [StashDB] StashDB API密钥与服务地址
+    stashdb_api_key: str = Field(
+        default="",
+        title="StashDB API密钥",
+        description="留空时自动回退使用 JavStash API密钥",
+    )
+    stashdb_url: str = Field(default="https://stashdb.org", title="StashDB 地址")
+    use_phash_number: bool = Field(default=True, title="优先使用视频指纹(pHash)提取番号")
     tmdb_api_base: str = Field(default="api.tmdb.org", title="TMDB API地址")
     tmdb_api_key: str = Field(default="", title="TMDB API Key")
     javdb: str = Field(default="", title="Javdb")

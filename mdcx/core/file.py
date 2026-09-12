@@ -434,7 +434,49 @@ async def get_file_info_v2(file_path: Path, copy_sub: bool = True) -> FileInfo:
 
         # 获取番号
         if not movie_number:
-            movie_number = get_file_number(file_path_str, manager.computed.escape_string_list)
+            if getattr(manager.config, "use_phash_number", False):
+                javstash_key = getattr(manager.config, "javstash_api_key", "").strip()
+                stashdb_key = getattr(manager.config, "stashdb_api_key", "").strip() or javstash_key
+
+                endpoints: list[dict[str, str]] = []
+                if javstash_key:
+                    endpoints.append(
+                        {
+                            "name": "JavStash",
+                            "url": getattr(manager.config, "javstash_url", "https://javstash.org"),
+                            "api_key": javstash_key,
+                        }
+                    )
+                if stashdb_key:
+                    endpoints.append(
+                        {
+                            "name": "StashDB",
+                            "url": getattr(manager.config, "stashdb_url", "https://stashdb.org"),
+                            "api_key": stashdb_key,
+                        }
+                    )
+
+                if not endpoints:
+                    LogBuffer.log().write(
+                        "\n 🟡 [pHash识别] 已勾选使用视频指纹，但未配置 JavStash API Key 或 StashDB API Key，跳过指纹识别"
+                    )
+                else:
+                    try:
+                        from ..utils.phash import resolve_number_by_phash
+
+                        proxy = (
+                            manager.config.proxy
+                            if getattr(manager.config, "use_proxy", False) and manager.config.proxy
+                            else ""
+                        )
+                        matched_code = await resolve_number_by_phash(file_path, proxy=proxy, endpoints=endpoints)
+                        if matched_code:
+                            movie_number = matched_code
+                    except Exception as e:
+                        LogBuffer.log().write(f"\n ⚠️ [pHash识别] 异常，回退常规正则: {e}")
+
+            if not movie_number:
+                movie_number = get_file_number(file_path_str, manager.computed.escape_string_list)
 
         # 259LUXU-1111, 非mgstage、avsex去除前面的数字前缀
         temp_n = re.findall(r"\d{3,}([a-zA-Z]+-\d+)", movie_number)

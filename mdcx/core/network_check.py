@@ -476,7 +476,8 @@ def format_result_line(result: NetworkCheckResult) -> str:
     name = result.spec.name[:18]
     status_code = _status_code_text(result.status_code)
     elapsed = _elapsed_text(result.elapsed_ms)
-    used_proxy = result.used_proxy if result.used_proxy is not None else result.spec.use_proxy
+    # [Fix] 未执行/已取消任务回退到运行时推断的 _compute_used_proxy，避免无代理环境下误显“代理”
+    used_proxy = result.used_proxy if result.used_proxy is not None else _compute_used_proxy(result.spec)
     proxy = "代理" if used_proxy else "直连"
     proxy = f"{proxy:<4}"
     message = result.message
@@ -552,7 +553,8 @@ async def _build_site_specs() -> list[NetworkCheckSpec]:
     manager = _manager()
     specs: list[NetworkCheckSpec] = []
     for site in get_registered_crawler_sites(include_hidden=False):
-        if site == Website.THEPORNDB:
+        # [JavStash] JavStash/ThePornDB 需凭证，由 _build_static_specs 的“账号/API”统一测活
+        if site in (Website.THEPORNDB, Website.JAVSTASH):
             continue
         crawler_cls = get_crawler(site)
         if crawler_cls is None:
@@ -815,6 +817,38 @@ def _build_static_specs() -> list[NetworkCheckSpec]:
                 warning_if_missing="未填写 API Token，影响欧美刮削",
             )
         )
+
+    # [JavStash] 账号/API 类别下注册 JavStash Token 测活项
+    javstash_key = getattr(manager.config, "javstash_api_key", "").strip()
+    javstash_url = (getattr(manager.config, "javstash_url", "") or "https://javstash.org").strip().rstrip("/")
+    if javstash_key:
+        from ..utils.javstash_utils import STASH_HEADERS, STASH_ME_QUERY
+
+        specs.append(
+            NetworkCheckSpec(
+                name="JavStash Token",
+                group="账号/API",
+                url=f"{javstash_url}/graphql",
+                method="POST",
+                headers={
+                    **STASH_HEADERS,
+                    "ApiKey": javstash_key,
+                    "Accept": "application/json",
+                    "Content-Type": "application/json",
+                },
+                json_data={"query": STASH_ME_QUERY, "variables": {}},
+                validator="javstash_token",
+            )
+        )
+    else:
+        specs.append(
+            NetworkCheckSpec(
+                name="JavStash Token",
+                group="账号/API",
+                url="",
+                warning_if_missing="未填写 API Key，影响 Stash 刮削",
+            )
+        )
     return specs
 
 
@@ -937,6 +971,8 @@ async def run_network_check_item(
             status, message = _classify_thejavdb_api(int(response.status_code), text)
         elif spec.validator == "missav_api":
             status, message = _classify_missav_api(int(response.status_code), text)
+        elif spec.validator == "javstash_token":  # [JavStash]
+            status, message = _classify_javstash_token(int(response.status_code), text)
         elif spec.name == "CF Bypass" and status == NetworkCheckStatus.OK:
             message = "服务可用"
 
@@ -984,6 +1020,19 @@ def _classify_theporndb_token(status_code: int, text: str) -> tuple[NetworkCheck
         return NetworkCheckStatus.WARNING, "API 返回数据异常"
     return _classify_http_result(
         NetworkCheckSpec(name="ThePornDB Token", group="账号/API", url="", site=Website.THEPORNDB), status_code, text
+    )
+
+
+# [JavStash] JavStash Token 测活响应结果判定分类器
+def _classify_javstash_token(status_code: int, text: str) -> tuple[NetworkCheckStatus, str]:
+    if status_code in (401, 403):
+        return NetworkCheckStatus.FAILED, "API Key 错误或未授权"
+    if status_code == 200 and ('"me"' in text or '"name"' in text):
+        return NetworkCheckStatus.OK, "API Key 有效，连接正常"
+    if status_code == 200:
+        return NetworkCheckStatus.WARNING, "API 返回数据异常"
+    return _classify_http_result(
+        NetworkCheckSpec(name="JavStash Token", group="账号/API", url="", site=Website.JAVSTASH), status_code, text
     )
 
 

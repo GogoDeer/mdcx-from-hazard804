@@ -681,6 +681,13 @@ def save_config(self: "MyMAinWindow"):
     manager.config.fc2ppvdb = self.Ui.plainTextEdit_cookie_fc2ppvdb.toPlainText()  # fc2ppvdb cookie
     manager.config.javbus = self.Ui.plainTextEdit_cookie_javbus.toPlainText()  # javbus cookie
     manager.config.theporndb_api_token = self.Ui.lineEdit_api_token_theporndb.text()  # api token
+    # [JavStash] 保存 JavStash 密钥与地址
+    manager.config.javstash_api_key = self.Ui.lineEdit_javstash_api_key.text()
+    manager.config.javstash_url = self.Ui.lineEdit_javstash_url.text()
+    # [StashDB] 保存 StashDB 密钥与地址
+    manager.config.stashdb_api_key = self.Ui.lineEdit_stashdb_api_key.text()
+    manager.config.stashdb_url = self.Ui.lineEdit_stashdb_url.text()
+    manager.config.use_phash_number = self.Ui.checkBox_use_phash_number.isChecked()
     manager.config.tmdb_api_base = self.Ui.lineEdit_tmdb_api_base.text().strip()  # TMDB API 地址
     manager.config.tmdb_api_key = self.Ui.lineEdit_tmdb_api_key.text().strip()  # TMDB API Key
     if manager.config.javdb:

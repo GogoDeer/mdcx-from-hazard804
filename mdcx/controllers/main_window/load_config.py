@@ -941,6 +941,13 @@ def load_config(self: "MyMAinWindow"):
             self.Ui.lineEdit_site_custom_url.setText(manager.config.get_site_url(Website(site)))
 
         self.Ui.lineEdit_api_token_theporndb.setText(manager.config.theporndb_api_token)
+        # [JavStash] 加载 JavStash 密钥与地址
+        self.Ui.lineEdit_javstash_api_key.setText(manager.config.javstash_api_key)
+        self.Ui.lineEdit_javstash_url.setText(manager.config.javstash_url)
+        # [StashDB] 加载 StashDB 密钥与地址
+        self.Ui.lineEdit_stashdb_api_key.setText(manager.config.stashdb_api_key)
+        self.Ui.lineEdit_stashdb_url.setText(manager.config.stashdb_url)
+        self.Ui.checkBox_use_phash_number.setChecked(getattr(manager.config, "use_phash_number", True))
         self.Ui.lineEdit_tmdb_api_base.setText(manager.config.tmdb_api_base)
         self.Ui.lineEdit_tmdb_api_key.setText(manager.config.tmdb_api_key)
         # javdb cookie
