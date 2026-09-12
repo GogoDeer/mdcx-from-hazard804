@@ -467,6 +467,10 @@ class Website(Enum):
     PRESTIGE = "prestige"
     R18DEV = "r18dev"
     THEPORNDB = "theporndb"
+    JAPANHDV = "japanhdv"
+    JAVHUB = "javhub"
+    JAVSTASH = "javstash"  # [JavStash]
+    STASHDB = "stashdb"  # [StashDB]
     XCITY = "xcity"
 
     OFFICIAL = "official"

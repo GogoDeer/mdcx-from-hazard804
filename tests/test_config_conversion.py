@@ -213,7 +213,7 @@ def test_config_default_site_priorities_follow_current_frontend_defaults():
         Website.JAVDB_API,
         Website.JAVDB_APP,
     ]
-    assert config.website_oumei == [Website.THEPORNDB, Website.AVHEAT]
+    assert config.website_oumei == [Website.STASHDB, Website.THEPORNDB, Website.AVHEAT]
     assert config.website_guochan == [
         Website.MADOUQU,
         Website.MADOUCLUB,
