@@ -65,8 +65,12 @@ def _create_application() -> tuple[QApplication, MyMAinWindow]:
     if platform.system() != "Windows":
         app.setStyle("Fusion")
     apply_application_palette(False)
-    if platform.system() != "Windows":
-        app.setWindowIcon(QIcon("resources/Img/MDCx.ico"))  # 设置任务栏图标
+    # [Fix] 为所有平台（包括 Windows）设置统一的任务栏与窗口图标
+    icon_path = MAIN_PATH / "resources" / "Img" / "MDCx.ico"
+    if icon_path.is_file():
+        app.setWindowIcon(QIcon(str(icon_path)))
+    else:
+        app.setWindowIcon(QIcon("resources/Img/MDCx.ico"))
 
     ui = MyMAinWindow()
     ui.show()
@@ -127,6 +131,10 @@ def _ensure_stdio() -> None:
 
 
 def main() -> int:
+    # [Fix] 打包为独立 exe 运行时，如果被误传入 -m / -c 等命令行参数，静默退出避免重新弹出 GUI
+    if getattr(sys, "frozen", False) and len(sys.argv) > 1 and sys.argv[1] in ("-m", "-c"):
+        return 0
+
     _enable_crash_dump()
     _ensure_stdio()
     show_constants()
