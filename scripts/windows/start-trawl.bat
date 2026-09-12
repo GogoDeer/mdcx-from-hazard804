@@ -11,7 +11,7 @@ echo.
 
 cd /d "%~dp0"
 
-rem 定位 Bun：兼容 bun\bun.exe 与 bun\bun-windows-x64\bun.exe 两种嵌套结构
+rem locate bun: support both bun\bun.exe and bun\bun-windows-x64\bun.exe layouts
 set "BUN_EXE="
 if exist "bun\bun.exe" (
     set "BUN_EXE=bun\bun.exe"
@@ -27,8 +27,8 @@ if not defined BUN_EXE (
 )
 echo [INFO] Bun: %BUN_EXE%
 
-rem 决定运行哪份源码：优先包根自带源码（打包时已应用补丁、依赖已就位、完全离线）；
-rem src\ 在线克隆副本仅作兜底（包根无源码的裸部署场景），避免首启强依赖外网且版本漂移
+rem pick source: prefer bundled source at package root (patched at pack time, deps ready, fully offline);
+rem src clone is only a fallback when root has no source (bare-script deploy), avoids first-run network hard dependency + version drift
 set "SRC_DIR="
 if exist "apps\api\src\index.ts" (
     set "SRC_DIR=."
@@ -47,8 +47,8 @@ if exist "apps\api\src\index.ts" (
     set "SRC_DIR=src"
 )
 
-rem 对 src\ 克隆副本兜底应用 MDCx 兼容补丁（提升 Tier3/4 页面加载超时上限，改善挑战页稳定性）
-rem 包根自带源码在打包阶段已应用过补丁，无需重复处理
+rem apply MDCx compat patch only for the src clone copy (raises Tier3/4 page-load timeout for challenge stability)
+rem bundled root source was patched at pack time, skip
 if "%SRC_DIR%"=="src" if exist "trawl-goto-timeout.patch" (
     cd /d "%~dp0src"
     git apply --check ..\trawl-goto-timeout.patch >nul 2>&1
@@ -62,8 +62,8 @@ if "%SRC_DIR%"=="src" if exist "trawl-goto-timeout.patch" (
     cd /d "%~dp0"
 )
 
-rem 校验/安装依赖：必须在所运行源码的目录内执行，bun 按当前目录的 package.json/bun.lock 安装，
-rem 跑错目录等于没装；每次启动做一次幂等校验（已是最新时毫秒级），既兜底依赖缺失，也吸收克隆副本的上游依赖变更
+rem verify/install deps inside the chosen source dir; bun installs per cwd package.json/bun.lock
+rem wrong dir = not installed; every-startup idempotent re-check (no-op is ~ms), covering missing deps and clone drift
 if exist "%SRC_DIR%\node_modules" (
     echo [INFO] 校验依赖...
 ) else (
@@ -83,16 +83,16 @@ if not "%INSTALL_ERR%"=="0" (
     exit /b 1
 )
 
-rem 设置环境变量
+rem env vars
 set MITM_PROXY_ENABLED=false
 set PORT=8191
-rem 浏览器池默认 2（稳定性/内存折中，用户可改 .env 的 BROWSER_POOL_SIZE）
+rem browser pool default 2 (stability/memory tradeoff; override via BROWSER_POOL_SIZE in .env)
 set BROWSER_POOL_SIZE=2
-rem 让 camoufox-js 直接使用便携包内自带的 Camoufox 浏览器，避免在线下载
+rem point camoufox-js at the bundled Camoufox to avoid online download
 set CAMOUFOX_INSTALL_DIR=%~dp0.cache\camoufox
 
-rem 内置 Redis：便携包自带，自动启动用于 TRAWL 会话缓存（Tier 2 fast-path）
-rem 定位 redis-server.exe：兼容 redis\redis-server.exe 与 redis\Redis-*\redis-server.exe 两种嵌套结构
+rem bundled Redis: auto-start for TRAWL session cache (Tier 2 fast-path)
+rem locate redis-server.exe: support both redis\redis-server.exe and redis\Redis-*\redis-server.exe layouts
 set "REDIS_EXE="
 set REDIS_URL=
 if exist "redis\redis-server.exe" (
@@ -122,7 +122,7 @@ echo.
 echo [提示] 按 Ctrl+C 停止服务
 echo.
 
-rem 启动服务（cwd 保持包根，bun 从包根 .env 读配置）
+rem start service (cwd stays at package root so bun reads root .env)
 "%BUN_EXE%" run "%SRC_DIR%\apps\api\src\index.ts"
 
 if errorlevel 1 (
