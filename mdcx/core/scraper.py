@@ -40,6 +40,7 @@ from ..crawler import CrawlerProvider
 from ..models.enums import FileMode
 from ..models.flags import JSON_DATA_CACHE_MAX_ENTRIES, FileDoneDict, Flags
 from ..models.log_buffer import LogBuffer
+from ..models.manifest import ScrapeHistoryRegistry, ScrapeManifest
 from ..models.model_types import CrawlersResult, FileInfo, OtherInfo, ScrapeResult, ShowData
 from ..signals import signal
 from ..tools.emby_actor_image import update_emby_actor_photo
@@ -264,34 +265,36 @@ class Scraper:
                     before = len(movie_list)
                     filtered = []
                     exhausted = 0
+                    retried = 0
                     for p in movie_list:
                         mtime = await _safe_mtime(p)
-                        if not cache.should_skip(p, mtime, force=False):
-                            # failed 且重试次数耗尽的文件跳过（MAX_RETRY_COUNT 语义
-                            # 对主扫描路径生效——原实现只判 done，注定失败的文件
-                            # 每次全量刮削都无限重试，全库审查 B5）
-                            state = cache.get_state(p)
-                            if (
-                                state is not None
-                                and state.status == "failed"
-                                and state.fail_count >= MAX_RETRY_COUNT
-                                and abs(state.mtime - mtime) < 1e-6
-                            ):
-                                exhausted += 1
-                                continue
-                            filtered.append(p)
-                    skipped = before - len(filtered)
+                        if cache.should_skip(p, mtime, force=False):
+                            continue
+                        # failed 且重试次数耗尽的文件跳过（MAX_RETRY_COUNT 语义
+                        # 对主扫描路径生效——原实现只判 done，注定失败的文件
+                        # 每次全量刮削都无限重试，全库审查 B5）
+                        state = cache.get_state(p)
+                        if (
+                            state is not None
+                            and state.status == "failed"
+                            and state.fail_count >= MAX_RETRY_COUNT
+                            and abs(state.mtime - mtime) < 1e-6
+                        ):
+                            exhausted += 1
+                            continue
+                        if state is not None and state.status == "failed":
+                            retried += 1
+                        filtered.append(p)
+                    skipped = before - len(filtered) - exhausted
+                    movie_list[:] = list(dict.fromkeys(filtered))
                     if skipped:
-                        movie_list = filtered
                         signal.show_log_text(f" ⏭ 断点续刮：跳过 {skipped} 个已刮削且未变化的文件")
                     if exhausted:
                         signal.show_log_text(
                             f" ⏭ 断点续刮：跳过 {exhausted} 个连续失败超过 {MAX_RETRY_COUNT} 次的文件（强制重刮可重试）"
                         )
-                pending = cache.list_pending(existing)
-                if pending:
-                    movie_list.extend(pending)
-                    signal.show_log_text(f" 🔄 恢复 {len(pending)} 个上次失败的文件重新刮削")
+                    if retried:
+                        signal.show_log_text(f" 🔄 恢复 {retried} 个上次失败的文件重新刮削")
             except Exception as e:
                 signal.show_log_text(f" ⚠ 刮削状态缓存读取失败，按全量处理: {e}")
 
@@ -452,14 +455,17 @@ class Scraper:
         if len(show_name) > 40:
             show_name = show_name[:40] + "..."
 
-        # 处理间歇任务
+        # 处理间歇任务：若当前处于休息期，等待休息结束
         while (
             manager.config.main_mode != 4
             and Switch.REST_SCRAPE in manager.config.switch_on
-            and count - Flags.rest_now_begin_count > manager.config.rest_count
+            and not Flags.sleep_end.is_set()
         ):
             self._check_stop(show_name)
-            await asyncio.sleep(1)
+            try:
+                await asyncio.wait_for(Flags.sleep_end.wait(), timeout=1.0)
+            except TimeoutError:
+                pass
 
         # 非第一个加延时
         Flags.scrape_starting = await Flags.increment("scrape_starting")
@@ -557,6 +563,8 @@ class Scraper:
             if json_data and other:
                 show_data.data = json_data
                 show_data.other = other
+                if getattr(other, "manifest", None):
+                    show_data.manifest = other.manifest
                 Flags.succ_count = await Flags.increment("succ_count")
                 show_data.show_name = (
                     str(Flags.count_claw)
@@ -615,6 +623,19 @@ class Scraper:
                     )
                 failed_folder = get_movie_path_setting(file_path).failed_folder
                 fail_file_path = await move_file_to_failed_folder(failed_folder, file_path, folder_old_path)
+                fail_manifest = ScrapeManifest(
+                    original_file_path=file_path,
+                    original_folder_path=folder_old_path,
+                    new_file_path=fail_file_path,
+                    new_folder_path=fail_file_path.parent,
+                    extracted_number=file_info.number,
+                    scrape_log=LogBuffer.log().get(),
+                    scrape_time=get_current_time(),
+                    config_path=str(manager.path),
+                    full_log_path=str(getattr(Flags.log_txt, "name", "")),
+                )
+                show_data.manifest = fail_manifest
+                ScrapeHistoryRegistry.save(fail_manifest)
                 Flags.failed_list.append((fail_file_path, error_msg))
                 await self._failed_file_info_show(str(Flags.fail_count), fail_file_path, error_msg)
                 signal.view_failed_list_settext.emit(f"失败 {Flags.fail_count}")
@@ -645,8 +666,18 @@ class Scraper:
             scrape_info_begin = f"{count:d}/{count_all:d} ({progress_percentage}) round({Flags.count_claw}) {split_path(file_path)[1]}    新的刮削线程"
             scrape_info_begin = "\n\n\n" + "=" * 40 + "\n" + scrape_info_begin
             scrape_info_after = f"\n 🕷 {get_current_time()} {count}/{count_all} {split_path(file_path)[1]} 刮削完成！用时 {used_time} 秒！"
+            per_movie_log = scrape_info_begin + LogBuffer.log().get() + scrape_info_after
+            if show_data.manifest:
+                show_data.manifest.scrape_log = per_movie_log
+                show_data.manifest.duration_seconds = used_time
+                show_data.manifest.extracted_number = file_info.number
+                show_data.manifest.matched_title = getattr(json_data, "title", "") if json_data else ""
+                show_data.manifest.scrape_time = get_current_time()
+                show_data.manifest.config_path = str(manager.path)
+                show_data.manifest.full_log_path = str(getattr(Flags.log_txt, "name", ""))
+                ScrapeHistoryRegistry.save(show_data.manifest)
             if manager.config.show_web_log:
-                signal.show_log_text(scrape_info_begin + LogBuffer.log().get() + scrape_info_after)
+                signal.show_log_text(per_movie_log)
             else:
                 fail_reason = LogBuffer.error().get(only_self=True)
                 if fail_reason:
@@ -690,28 +721,30 @@ class Scraper:
         try:
             if manager.config.main_mode != 4 and Switch.REST_SCRAPE in manager.config.switch_on:
                 async with self._rest_lock:
-                    time_note = f" 🏖 已累计刮削 {count}/{count_all}，已连续刮削 {count - Flags.rest_now_begin_count}/{manager.config.rest_count}..."
-                    signal.show_log_text(time_note)
                     if count - Flags.rest_now_begin_count >= manager.config.rest_count:
-                        if Flags.sleep_end.is_set():
-                            # 达到阈值且未在休息 → 启动休息
+                        if Flags.rest_time_convert > 0:
                             Flags.sleep_end.clear()
-                            Flags.rest_next_begin_time = time.time()  # 下一轮倒计时开始时间
-                            time_note = f'\n ⏸ 休息 {Flags.rest_time_convert} 秒，将在 <font color="red">{get_real_time(Flags.rest_next_begin_time + Flags.rest_time_convert)}</font> 继续刮削剩余的 {count_all - count} 个任务...\n'
-                            signal.show_log_text(time_note)
-                            while (
-                                Switch.REST_SCRAPE in manager.config.switch_on
-                                and time.time() - Flags.rest_next_begin_time < Flags.rest_time_convert
-                            ):
-                                if Flags.scrape_starting > count:  # 如果突然调大了文件数量，这时跳出休眠
-                                    break
-                                await asyncio.sleep(1)
-                            Flags.rest_now_begin_count = count  # 休息周期结束，重置计数
-                            Flags.sleep_end.set()  # 休眠结束，下一轮开始
-                            Flags.next_start_time = time.time() - manager.config.thread_time
+                            try:
+                                Flags.rest_next_begin_time = time.time()  # 下一轮倒计时开始时间
+                                time_note = f'\n ⏸ 休息 {Flags.rest_time_convert} 秒，将在 <font color="red">{get_real_time(Flags.rest_next_begin_time + Flags.rest_time_convert)}</font> 继续刮削剩余的 {count_all - count} 个任务...\n'
+                                signal.show_log_text(time_note)
+                                while (
+                                    Switch.REST_SCRAPE in manager.config.switch_on
+                                    and time.time() - Flags.rest_next_begin_time < Flags.rest_time_convert
+                                ):
+                                    self._check_stop(show_name)
+                                    if Flags.scrape_starting > count:  # 如果突然调大了文件数量，这时跳出休眠
+                                        break
+                                    await asyncio.sleep(1)
+                            finally:
+                                Flags.rest_now_begin_count = count  # 休息周期结束，重置计数
+                                Flags.sleep_end.set()  # 休眠结束，下一轮开始
+                                Flags.next_start_time = time.time() - manager.config.thread_time
                         else:
-                            await Flags.sleep_end.wait()  # 正在休息 → 等待休眠结束
-                    # 未达阈值：继续刮削，无需处理
+                            Flags.rest_now_begin_count = count
+                    else:
+                        time_note = f" 🏖 已累计刮削 {count}/{count_all}，已连续刮削 {count - Flags.rest_now_begin_count}/{manager.config.rest_count}..."
+                        signal.show_log_text(time_note)
         except Exception as e:
             self._check_stop(show_name)
             signal.show_traceback_log(traceback.format_exc())
@@ -1193,6 +1226,21 @@ class Scraper:
 
         # 判断输出文件夹和文件是否已存在，如无则创建输出文件夹
         other = OtherInfo.empty()
+        folder_existed = await aiofiles.os.path.exists(folder_new_path)
+        manifest = ScrapeManifest(
+            original_file_path=file_path,
+            original_folder_path=folder_old_path,
+            new_file_path=file_new_path,
+            new_folder_path=folder_new_path,
+            link_mode=int(getattr(manager.config, "soft_link", 0)),
+            extracted_number=res.number,
+            matched_title=res.title,
+            config_path=str(getattr(manager, "path", "")),
+            full_log_path=str(getattr(Flags.log_txt, "name", "")),
+        )
+        if not folder_existed:
+            manifest.created_dirs.append(folder_new_path)
+
         if not skip_reorganize:
             if not await creat_folder(
                 other,
@@ -1241,6 +1289,7 @@ class Scraper:
                         naming_rule,
                     )  # 清理旧的thumb、poster、fanart、nfo
                 await save_success_list(file_path, file_new_path)  # 保存成功列表
+                other.manifest = manifest
                 return res, other
             # 返回MDCx1_1main, 继续处理下一个文件
             return None, None
@@ -1278,6 +1327,7 @@ class Scraper:
                 single_folder_catched,
             ):
                 return None, None
+            manifest.created_files.extend([thumb_final_path, fanart_final_path, poster_final_path])
 
         if file_can_download:
             # trailer 有带文件名、不带文件名两种命名方式，不能依赖图片处理权。
@@ -1287,13 +1337,24 @@ class Scraper:
 
         # 生成nfo文件
         await write_nfo(file_info, res, nfo_new_path, folder_new_path, update_nfo)
+        manifest.created_files.append(nfo_new_path)
 
         # 移动字幕、种子、bif、trailer、其他文件（配置允许时才执行）
         if manager.config.success_file_move:
             if file_info.has_sub:
                 await move_sub(folder_old_path, folder_new_path, file_name, sub_list, naming_rule)
+                for sub in sub_list:
+                    sub_old = folder_old_path / (file_name + sub)
+                    sub_new = folder_new_path / (naming_rule + sub)
+                    manifest.moved_files.append((sub_old, sub_new))
             await move_torrent(folder_old_path, folder_new_path, file_name, movie_number, naming_rule)
+            manifest.moved_files.append(
+                (folder_old_path / (file_name + ".torrent"), folder_new_path / (naming_rule + ".torrent"))
+            )
             await move_bif(folder_old_path, folder_new_path, file_name, naming_rule)
+            manifest.moved_files.append(
+                (folder_old_path / (file_name + "-320-10.bif"), folder_new_path / (naming_rule + "-320-10.bif"))
+            )
             await move_other_file(res.number, folder_old_path, folder_new_path, file_name, naming_rule)
 
             # 移动文件
@@ -1323,6 +1384,7 @@ class Scraper:
         # 所有图片及相关文件处理完成后，最后统一压缩最终输出目录中的图片。
         await compress_images_in_folder_async(folder_new_path, manager.config.compress_downloaded_images)
 
+        other.manifest = manifest
         return res, other
 
     def _check_stop(self, show_name: str) -> None:

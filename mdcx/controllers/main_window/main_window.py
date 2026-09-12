@@ -37,7 +37,11 @@ from mdcx.base.file import (
 )
 from mdcx.base.image import add_del_extrafanart_copy
 from mdcx.base.video import add_del_extras, add_del_theme_videos
-from mdcx.base.web import check_theporndb_api_token, check_version
+from mdcx.base.web import (  # [JavStash] check_javstash_api_key
+    check_javstash_api_key,
+    check_theporndb_api_token,
+    check_version,
+)
 from mdcx.base.web_sync import get_text_sync
 from mdcx.config.enums import NfoInclude, Switch, Website
 from mdcx.config.extend import deal_url, get_movie_path_setting, parse_media_paths
@@ -47,6 +51,7 @@ from mdcx.consts import GITHUB_ISSUES_URL, GITHUB_RELEASES_URL, IS_WINDOWS, LOCA
 from mdcx.core.naming import NameRenderOptions, NamingTarget, render_name
 from mdcx.core.network_check import NetworkCheckStatus, merge_site_check_cache, run_network_check
 from mdcx.core.nfo import write_nfo
+from mdcx.core.restore import restore_scraped_movie
 from mdcx.core.scrape_cache import ScrapeStateCache
 from mdcx.core.scraper import again_search, get_remain_list, start_new_scrape
 from mdcx.crawlers.fc2ppvdb import (
@@ -80,6 +85,7 @@ from mdcx.utils.file import (
     resolve_link_source_sync,
     resolve_success_record_source_sync,
 )
+from mdcx.utils.javstash_utils import verify_javstash_connection_sync  # [JavStash]
 from mdcx.utils.path import safe_rmtree
 from mdcx.views.CustomClass import CustomScrollArea
 from mdcx.views.MDCx import Ui_MDCx
@@ -123,6 +129,8 @@ class MyMAinWindow(QMainWindow):
     set_fc2ppvdb_status = pyqtSignal(str)  # fc2ppvdb 检查状态更新
     set_javbus_cookie = pyqtSignal(str)  # 加载javbus cookie文本内容到设置页面
     set_javbus_status = pyqtSignal(str)  # javbus 检查状态更新
+    set_javstash_status = pyqtSignal(str)  # [JavStash] JavStash 检查状态更新
+    set_stashdb_status = pyqtSignal(str)  # [StashDB] StashDB 检查状态更新
     exec_save_config = pyqtSignal()  # 主线程执行保存配置
     set_label_file_path = pyqtSignal(str)  # 主界面更新路径信息显示
     set_pic_pixmap = pyqtSignal(list, list)  # 主界面显示封面、缩略图
@@ -358,6 +366,7 @@ class MyMAinWindow(QMainWindow):
         self.menu_stop = QAction(QIcon(resources.stop_icon), "  停止刮削\tS", self)
         self.menu_number = QAction(QIcon(resources.input_number_icon), "  重新刮削\tN", self)
         self.menu_website = QAction(QIcon(resources.input_website_icon), "  输入网址重新刮削\tU", self)
+        self.menu_restore = QAction(QIcon(resources.clear_tree_icon), "  还原影片并复制日志\tR", self)
         self.menu_del_file = QAction(QIcon(resources.del_file_icon), "  删除文件\tD", self)
         self.menu_del_folder = QAction(QIcon(resources.del_folder_icon), "  删除文件和文件夹\tA", self)
         self.menu_make_symlink = QAction(QIcon(resources.open_folder_icon), "  在指定位置创建软链接", self)
@@ -378,6 +387,7 @@ class MyMAinWindow(QMainWindow):
         self.menu_stop.triggered.connect(self.pushButton_start_scrape_clicked)
         self.menu_number.triggered.connect(self.search_by_number_clicked)
         self.menu_website.triggered.connect(self.search_by_url_clicked)
+        self.menu_restore.triggered.connect(self.main_restore_movie_click)
         self.menu_del_file.triggered.connect(self.main_del_file_click)
         self.menu_del_folder.triggered.connect(self.main_del_folder_click)
         self.menu_make_symlink.triggered.connect(self.main_make_symlink_click)
@@ -392,6 +402,7 @@ class MyMAinWindow(QMainWindow):
 
         QShortcut(QKeySequence(self.tr("N")), self, self.search_by_number_clicked)
         QShortcut(QKeySequence(self.tr("U")), self, self.search_by_url_clicked)
+        QShortcut(QKeySequence(self.tr("R")), self, self.main_restore_movie_click)
         QShortcut(QKeySequence(self.tr("D")), self, self.main_del_file_click)
         QShortcut(QKeySequence(self.tr("A")), self, self.main_del_folder_click)
         QShortcut(QKeySequence(self.tr("F")), self, self.main_open_folder_click)
@@ -423,6 +434,8 @@ class MyMAinWindow(QMainWindow):
             menu.addAction(self.menu_make_symlink_in_dir)
             menu.addAction(self.menu_make_hardlink)
             menu.addAction(self.menu_make_hardlink_in_dir)
+            menu.addSeparator()
+            menu.addAction(self.menu_hide)
             menu.exec(self.Ui.page_main.mapToGlobal(pos))
             return
 
@@ -431,40 +444,43 @@ class MyMAinWindow(QMainWindow):
             file_name = split_path(file_path)[1]
             menu.addAction(QAction(file_name, self))
             menu.addSeparator()
-        elif self.file_main_open_path:
-            file_name = split_path(self.file_main_open_path)[1]
-            menu.addAction(QAction(file_name, self))
+            menu.addAction(self.menu_number)
+            menu.addAction(self.menu_website)
+            menu.addAction(self.menu_restore)
             menu.addSeparator()
+            menu.addAction(self.menu_del_file)
+            menu.addAction(self.menu_del_folder)
+            menu.addAction(self.menu_make_symlink)
+            menu.addAction(self.menu_make_symlink_in_dir)
+            menu.addAction(self.menu_make_hardlink)
+            menu.addAction(self.menu_make_hardlink_in_dir)
+            menu.addSeparator()
+            menu.addAction(self.menu_folder)
+            menu.addAction(self.menu_nfo)
+            menu.addAction(self.menu_play)
+            menu.addAction(self.menu_similar)
+            menu.addSeparator()
+            menu.addAction(self.menu_hide)
+            menu.exec(self.Ui.page_main.mapToGlobal(pos))
+            return
+
+        # 无选中影片时（例如右键空白区域、分类根节点、或未刮削时）
+        menu.addAction(QAction("请选择影片后使用！", self))
+        menu.addSeparator()
+        if self.Ui.pushButton_start_cap.text() != "开始":
+            menu.addAction(self.menu_stop)
         else:
-            menu.addAction(QAction("请刮削后使用！", self))
-            menu.addSeparator()
-            if self.Ui.pushButton_start_cap.text() != "开始":
-                menu.addAction(self.menu_stop)
-            else:
-                menu.addAction(self.menu_start)
-        menu.addAction(self.menu_number)
-        menu.addAction(self.menu_website)
+            menu.addAction(self.menu_start)
         menu.addSeparator()
-        menu.addAction(self.menu_del_file)
-        menu.addAction(self.menu_del_folder)
-        menu.addAction(self.menu_make_symlink)
-        menu.addAction(self.menu_make_symlink_in_dir)
-        menu.addAction(self.menu_make_hardlink)
-        menu.addAction(self.menu_make_hardlink_in_dir)
-        menu.addSeparator()
-        menu.addAction(self.menu_folder)
-        menu.addAction(self.menu_nfo)
-        menu.addAction(self.menu_play)
         menu.addAction(self.menu_hide)
-        menu.addAction(self.menu_similar)
         menu.exec(self.Ui.page_main.mapToGlobal(pos))
-        # menu.move(pos)
-        # menu.show()
 
     def _tree_result_context_menu(self, pos: QPoint):
         item = self.Ui.treeWidget_number.itemAt(pos)
         if item is not None and item.text(0) not in {"成功", "失败"}:
             self._set_result_item_as_current_selection(item)
+        else:
+            self.Ui.treeWidget_number.clearSelection()
         global_pos = self.Ui.treeWidget_number.viewport().mapToGlobal(pos)
         self._menu(self.Ui.page_main.mapFromGlobal(global_pos))
 
@@ -1022,6 +1038,13 @@ class MyMAinWindow(QMainWindow):
         except Exception:
             signal_qt.show_traceback_log(traceback.format_exc())
             signal_qt.show_log_text(traceback.format_exc())
+
+        # [JavStash] 启动时后台校验 JavStash API Key
+        try:
+            t = threading.Thread(target=check_javstash_api_key)
+            t.start()
+        except Exception:
+            pass
 
     def _on_version_check_done(self, has_new_version: bool):
         """主线程：版本检查完成后的 UI 更新与 cookie 检测。"""
@@ -2155,6 +2178,83 @@ class MyMAinWindow(QMainWindow):
                         again_search()
                 else:
                     signal_qt.show_scrape_info(f"💡 不支持的网站！{get_current_time()}")
+
+    def main_restore_movie_click(self):
+        """
+        主界面点击还原影片并复制日志到剪贴板（仅支持单选）
+        """
+        selected_entries = self._get_selected_entries()
+        if len(selected_entries) > 1:
+            QMessageBox.information(self, "提示", "还原功能仅支持单选，请选择单个影片进行还原！")
+            return
+        if not selected_entries:
+            QMessageBox.warning(self, "提示", "请选择需要还原的影片！")
+            return
+
+        _, target_show_name, show_data, target_file_path = selected_entries[0]
+        if not target_file_path or not show_data:
+            QMessageBox.warning(self, "提示", "请选择需要还原的影片！")
+            return
+
+        # 确认弹窗
+        box_text = (
+            f"将要还原影片：\n{target_file_path}\n\n"
+            "该操作将：\n"
+            "1. 将影片移回原位置并恢复原文件名；\n"
+            "2. 将伴随转移的字幕、种子等移回原目录；\n"
+            "3. 清理本次刮削生成的 NFO、图片等文件；\n"
+            "4. 生成 AI 诊断分析报告并自动复制到剪贴板。\n\n"
+            "您确定要还原吗？"
+        )
+        box = QMessageBox(QMessageBox.Icon.Question, "还原影片并复制日志", box_text)
+        box.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        box.button(QMessageBox.StandardButton.Yes).setText("确认还原")
+        box.button(QMessageBox.StandardButton.No).setText("取消")
+        box.setDefaultButton(QMessageBox.StandardButton.No)
+        if box.exec() != QMessageBox.StandardButton.Yes:
+            return
+
+        signal_qt.show_log_text(f" ⏪ 开始还原影片: {target_file_path}")
+        success, message, report, _ = restore_scraped_movie(show_data, target_file_path)
+
+        if not success:
+            signal_qt.show_log_text(f" ❌ 还原失败: {message}")
+            QMessageBox.critical(self, "还原失败", message)
+            return
+
+        # 复制 AI 诊断报告到系统剪切板
+        if report:
+            clipboard = QApplication.clipboard()
+            if clipboard:
+                clipboard.setText(report)
+                signal_qt.show_log_text(" 📋 AI 诊断报告已复制到剪贴板！")
+
+        signal_qt.show_log_text(f" ✅ {message}")
+        signal_qt.show_scrape_info(f"💡 影片已还原，AI 诊断日志已复制到剪切板！{get_current_time()}")
+
+        # 移除树节点或清除信息面板
+        if target_show_name:
+            self._remove_deleted_result_items([target_show_name])
+        elif self.file_main_open_path == target_file_path:
+            self._clear_main_info_panel()
+
+        # 弹窗提示成功，并提供快捷跳转重新指定番号刮削
+        finish_box = QMessageBox(
+            QMessageBox.Icon.Information,
+            "还原成功",
+            f"{message}\n\n您可以直接在与 AI 对话中粘贴（Ctrl+V）该报告进行排查。\n是否立即针对该文件重新指定番号进行刮削？",
+        )
+        btn_re_search = finish_box.addButton("重新指定番号", QMessageBox.ButtonRole.ActionRole)
+        btn_close = finish_box.addButton("关闭", QMessageBox.ButtonRole.RejectRole)
+        finish_box.setDefaultButton(btn_close)
+        finish_box.exec()
+
+        if finish_box.clickedButton() == btn_re_search:
+            orig_path = getattr(show_data, "manifest", None) and show_data.manifest.original_file_path
+            target_to_open = orig_path if orig_path and Path(orig_path).exists() else target_file_path
+            if target_to_open and Path(target_to_open).exists():
+                self.file_main_open_path = Path(target_to_open)
+                self.search_by_number_clicked()
 
     def main_del_file_click(self):
         """
@@ -4301,6 +4401,94 @@ class MyMAinWindow(QMainWindow):
         if Switch.AUTO_START in manager.config.switch_on:
             signal_qt.show_log_text("\n\n 🍔 已启用「软件启动后自动刮削」！即将开始自动刮削！")
             self.pushButton_start_scrape_clicked()
+
+    # [JavStash] 测试连接与自动保存配置
+    def pushButton_test_javstash_clicked(self):
+        url = self.Ui.lineEdit_javstash_url.text().strip()
+        api_key = self.Ui.lineEdit_javstash_api_key.text().strip()
+        if not url:
+            self.show_log_text(" ❗ JavStash 未填写地址！")
+            self.set_javstash_status.emit("❗ 未填写地址")
+            return
+        if not api_key:
+            self.show_log_text(" ❗ JavStash 未填写密钥！")
+            self.set_javstash_status.emit("❗ 未填写密钥")
+            return
+
+        self.show_log_text(" ⌛ 正在检测 JavStash 连接...")
+        self.set_javstash_status.emit("⌛ 正在检测中...")
+        try:
+            t = threading.Thread(target=self._test_javstash, args=(url, api_key))
+            t.start()
+        except Exception:
+            self.show_log_text(traceback.format_exc())
+
+    def _test_javstash(self, url: str, api_key: str):
+        try:
+            proxy = manager.config.proxy if manager.config.use_proxy and manager.config.proxy else None
+            success, tips = verify_javstash_connection_sync(url, api_key, proxy=proxy, timeout=15)
+
+            if success:
+                if manager.config.javstash_api_key != api_key or manager.config.javstash_url != url:
+                    self.exec_save_config.emit()
+                    self.show_log_text(" ✅ JavStash 配置已自动保存！")
+            else:
+                self.show_log_text(tips)
+                self.set_javstash_status.emit("❌ 连接失败")
+                return
+        except Exception as e:
+            tips = f"❌ JavStash 连接失败！异常: {e}"
+            self.show_log_text(tips)
+            self.set_javstash_status.emit("❌ 连接失败")
+            return
+
+        self.show_log_text(tips)
+        self.set_javstash_status.emit("✅ 连接正常")
+
+    # [StashDB] 测试连接与自动保存配置
+    def pushButton_test_stashdb_clicked(self):
+        url = self.Ui.lineEdit_stashdb_url.text().strip()
+        api_key = self.Ui.lineEdit_stashdb_api_key.text().strip()
+        if not url:
+            self.show_log_text(" ❗ StashDB 未填写地址！")
+            self.set_stashdb_status.emit("❗ 未填写地址")
+            return
+        if not api_key:
+            self.show_log_text(" ❗ StashDB 未填写密钥！")
+            self.set_stashdb_status.emit("❗ 未填写密钥")
+            return
+
+        self.show_log_text(" ⌛ 正在检测 StashDB 连接...")
+        self.set_stashdb_status.emit("⌛ 正在检测中...")
+        try:
+            t = threading.Thread(target=self._test_stashdb, args=(url, api_key))
+            t.start()
+        except Exception:
+            self.show_log_text(traceback.format_exc())
+
+    def _test_stashdb(self, url: str, api_key: str):
+        try:
+            proxy = manager.config.proxy if manager.config.use_proxy and manager.config.proxy else None
+            success, tips = verify_javstash_connection_sync(
+                url, api_key, proxy=proxy, timeout=15, service_name="StashDB"
+            )
+
+            if success:
+                if manager.config.stashdb_api_key != api_key or manager.config.stashdb_url != url:
+                    self.exec_save_config.emit()
+                    self.show_log_text(" ✅ StashDB 配置已自动保存！")
+            else:
+                self.show_log_text(tips)
+                self.set_stashdb_status.emit("❌ 连接失败")
+                return
+        except Exception as e:
+            tips = f"❌ StashDB 连接失败！异常: {e}"
+            self.show_log_text(tips)
+            self.set_stashdb_status.emit("❌ 连接失败")
+            return
+
+        self.show_log_text(tips)
+        self.set_stashdb_status.emit("✅ 连接正常")
 
     # endregion
 

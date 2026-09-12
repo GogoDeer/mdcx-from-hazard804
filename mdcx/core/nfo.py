@@ -414,6 +414,30 @@ async def write_nfo(
         if not data.external_ids.get(Website.JAVDB):
             write_text_element(code, "javdbsearchid", number)
 
+        # 记录原始文件防丢溯源信息，便于刮削错误时追溯或一键还原
+        orig_file_name = getattr(data, "originalfilename", "")
+        orig_file_path = getattr(data, "originalfilepath", "")
+        if (not orig_file_name or not orig_file_path) and await aiofiles.os.path.exists(nfo_file):
+            try:
+                existing_data, _ = await get_nfo_data(file_info.file_path, data.number)
+                if existing_data is not None:
+                    if not orig_file_name and getattr(existing_data, "originalfilename", ""):
+                        orig_file_name = existing_data.originalfilename
+                    if not orig_file_path and getattr(existing_data, "originalfilepath", ""):
+                        orig_file_path = existing_data.originalfilepath
+            except Exception as e:
+                LogBuffer.error().write(f"\n ⚠️ [NFO] 读取存量原始文件名异常: {e}")
+
+        if not orig_file_name:
+            orig_file_name = file_info.file_name or ""
+        if not orig_file_path:
+            orig_file_path = str(file_info.file_path) if file_info.file_path and str(file_info.file_path) != "." else ""
+
+        if orig_file_name:
+            write_text_element(code, "originalfilename", orig_file_name)
+        if orig_file_path:
+            write_text_element(code, "originalfilepath", orig_file_path)
+
         print("</movie>", file=code)
 
         await write_file_atomic_async(nfo_file, code.getvalue())
@@ -541,6 +565,12 @@ async def get_nfo_data(file_path: Path, movie_number: str) -> tuple[CrawlersResu
     poster = "".join(xml_nfo.xpath("//poster/text()")).replace("&amp;", "&")
     trailer = "".join(xml_nfo.xpath("//trailer/text()")).replace("&amp;", "&")
     wanted = "".join(xml_nfo.xpath("//votes/text()"))
+    originalfilename = "".join(xml_nfo.xpath("//originalfilename/text()")).strip()
+    originalfilepath = "".join(xml_nfo.xpath("//originalfilepath/text()")).strip()
+    if originalfilename:
+        json_data.originalfilename = originalfilename
+    if originalfilepath:
+        json_data.originalfilepath = originalfilepath
 
     # 判断马赛克
     if "国产" in tag or "國產" in tag:

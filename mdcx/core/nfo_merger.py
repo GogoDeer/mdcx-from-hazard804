@@ -210,6 +210,12 @@ def merge_nfo_fields(
             if site not in merged.external_ids:
                 merged.external_ids[site] = ext_id
 
+    # 继承原始文件溯源字段
+    if getattr(nfo, "originalfilename", ""):
+        merged.originalfilename = nfo.originalfilename
+    if getattr(nfo, "originalfilepath", ""):
+        merged.originalfilepath = nfo.originalfilepath
+
     # 更新 field_sources 溯源：被 NFO 覆盖的字段标记来源为 "local"
     for field_name in _SCALAR_FIELDS + _ARRAY_FIELDS:
         scraped_val = getattr(scraped, field_name, None)
