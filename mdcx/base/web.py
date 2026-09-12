@@ -22,6 +22,7 @@ from ..network_fingerprint import build_amazon_headers, build_fingerprint_header
 from ..signals import signal
 from ..utils import executor
 from ..utils.file import check_pic_async
+from ..utils.javstash_utils import STASH_HEADERS, STASH_ME_QUERY, parse_javstash_response  # [JavStash]
 from ..utils.rate_limit import AdaptiveRequestThrottle
 
 _AdaptiveRequestThrottle = AdaptiveRequestThrottle
@@ -789,18 +790,26 @@ async def get_imgsize(url) -> tuple[int, int]:
         try:
             if response.status_code != 200:
                 return 0, 0
-            async for chunk in response.aiter_content(chunk_size):
-                file_head.write(chunk)
-                try:
+            if getattr(response, "content", None):
 
-                    def _get_size():
-                        with Image.open(file_head) as img:
-                            return img.size
+                def _get_size_from_content():
+                    with Image.open(BytesIO(response.content)) as img:
+                        return img.size
 
-                    return await asyncio.to_thread(_get_size)
-                except Exception:
-                    # 如果解析失败，继续下载更多数据
-                    continue
+                return await asyncio.to_thread(_get_size_from_content)
+            async with asyncio.timeout(15.0):
+                async for chunk in response.aiter_content(chunk_size):
+                    file_head.write(chunk)
+                    try:
+
+                        def _get_size():
+                            with Image.open(file_head) as img:
+                                return img.size
+
+                        return await asyncio.to_thread(_get_size)
+                    except Exception:
+                        # 如果解析失败，继续下载更多数据
+                        continue
         except Exception:
             return 0, 0
         finally:
@@ -1037,6 +1046,50 @@ def check_version() -> int | None:
         if last_error:
             signal.add_log(f"❌ 获取最新版本失败！{last_error}")
     return None
+
+
+# [JavStash] 启动时后台校验 JavStash API Key 连通性
+def check_javstash_api_key() -> str:
+    tips = "✅ 连接正常! "
+    api_key = manager.config.javstash_api_key
+    url = manager.config.javstash_url
+    if not api_key:
+        tips = "❗ 未填写 API Key，影响 Stash 刮削！可在「软件设置」-「网络」添加！"
+    else:
+        headers = {
+            **STASH_HEADERS,
+            "ApiKey": api_key,
+            "Accept": "application/json",
+        }
+        endpoint = f"{url.rstrip('/')}/graphql"
+        json_data = {"query": STASH_ME_QUERY, "variables": {}}
+
+        try:
+            with manager.acquire_computed() as computed:
+                response, err = executor.run(
+                    computed.async_client.post_json(endpoint, json_data=json_data, headers=headers)
+                )
+        except CancelledError:
+            tips = "❌ JavStash 连接检查已取消"
+            signal.show_log_text(tips)
+            return tips
+        except Exception as e:
+            tips = f"❌ JavStash 连接异常: {e}"
+            signal.show_log_text(tips)
+            return tips
+
+        status_code = getattr(response, "status_code", None)
+        try:
+            import json as _json
+
+            res_data = _json.loads(response.text) if response and hasattr(response, "text") else None
+        except Exception:
+            res_data = None
+
+        _, tips = parse_javstash_response(res_data, error=err, status_code=status_code)
+
+    signal.show_log_text(tips.replace("✅", " ✅ JavStash").replace("❗", " ❗ JavStash"))
+    return tips
 
 
 def check_theporndb_api_token() -> str:

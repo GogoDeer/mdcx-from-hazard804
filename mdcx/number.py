@@ -4,10 +4,12 @@ import re
 import unicodedata
 
 from .manual import ManualConfig
+from .uncensored_number import parse_uncensored_number
 
 UNCENSORED_DIGIT_NUMBER_PATTERN = re.compile(r"^(?P<head>\d{6})(?P<sep>[-_])(?P<tail>\d{2,4})$", re.IGNORECASE)
+# [Fix] 支持 CAPPV, CARIBPR, 10MU 等无码前缀提取完整日期番号
 UNCENSORED_DIGIT_NUMBER_PREFIX_PATTERN = re.compile(
-    r"^(?P<prefix>1pondo|1pon|10musume|caribbeancom|caribbeancompr|carib|pacopacomama|pacoma|paco)[-_ ]*"
+    r"^(?P<prefix>1pondo|1pon|10musume|10mu|caribbeancom|caribbeancompr|carib|cappv|caribpr|pacopacomama|pacoma|paco)[-_ ]*"
     r"(?P<head>\d{6})(?P<sep>[-_])(?P<tail>\d{2,4})$",
     re.IGNORECASE,
 )
@@ -57,14 +59,102 @@ def normalize_uncensored_digit_number(number: str) -> str:
         # DIGIT_NUMBER_WITH_PREFIX_RE（[-_ ]* 分隔）兼容。
         return f"{match['prefix']}-{match['head']}{match['sep']}{match['tail']}"
 
-    return ""
+
+def extract_brand_number(raw_filename: str, filepath: str = "") -> str | None:
+    """按知名厂牌关键字前置优先提取番号，避免被通用有码正则截胡。"""
+    full_text = f"{raw_filename} {filepath}".lower()
+
+    # 1. HeyDouga: \d{4}[-_ ]*(?:ppv\d*[-_ ]*)?\d{3,4}
+    if any(k in full_text for k in ("heydouga", "hey_douga", "hey-douga", "hey douga")):
+        if m := re.search(r"(?:heydouga[-_ ]*)?(\d{4})[-_ ]*(?:ppv\d*[-_ ]*)?(\d{3,4})", raw_filename, re.IGNORECASE):
+            return f"{m.group(1)}-{m.group(2)}"
+        if filepath and (
+            m := re.search(r"(?:heydouga[-_ ]*)?(\d{4})[-_ ]*(?:ppv\d*[-_ ]*)?(\d{3,4})", filepath, re.IGNORECASE)
+        ):
+            return f"{m.group(1)}-{m.group(2)}"
+
+    # 2. FC2: FC2[-_ ]*(?:PPV[-_ ]*)?(\d{5,8})
+    if "fc2" in full_text:
+        if m := re.search(r"(?:fc2[-_ ]*(?:ppv[-_ ]*)?|fc2ppv[-_ ]*)(\d{5,8})", raw_filename, re.IGNORECASE):
+            return f"FC2-{m.group(1)}"
+        if filepath and (m := re.search(r"(?:fc2[-_ ]*(?:ppv[-_ ]*)?|fc2ppv[-_ ]*)(\d{5,8})", filepath, re.IGNORECASE)):
+            return f"FC2-{m.group(1)}"
+
+    # 3. 1Pondo: (\d{6})[-_](\d{3})
+    if any(k in full_text for k in ("1pondo", "1pon", "一本道")):
+        if m := re.search(r"(\d{6})[-_](\d{3})", raw_filename):
+            prefix = "1PONDO-" if any(p in raw_filename.lower() for p in ("1pondo", "1pon")) else ""
+            return f"{prefix}{m.group(1)}_{m.group(2)}"
+        if filepath and (m := re.search(r"(\d{6})[-_](\d{3})", filepath)):
+            prefix = "1PONDO-" if any(p in filepath.lower() for p in ("1pondo", "1pon")) else ""
+            return f"{prefix}{m.group(1)}_{m.group(2)}"
+
+    # 4. Caribbeancom / Caribbeancompr: (\d{6})[-_](\d{3})
+    if "caribpr" in full_text or "cappv" in full_text:
+        return None
+    if any(k in full_text for k in ("caribbeancom", "caribbean", "carib", "加勒比")):
+        if m := re.search(r"(\d{6})[-_](\d{3})", raw_filename):
+            prefix = (
+                "CARIBBEANCOM-"
+                if any(p in raw_filename.lower() for p in ("caribbeancom", "caribbean", "carib"))
+                else ""
+            )
+            return f"{prefix}{m.group(1)}-{m.group(2)}"
+        if filepath and (m := re.search(r"(\d{6})[-_](\d{3})", filepath)):
+            prefix = (
+                "CARIBBEANCOM-" if any(p in filepath.lower() for p in ("caribbeancom", "caribbean", "carib")) else ""
+            )
+            return f"{prefix}{m.group(1)}-{m.group(2)}"
+
+    # 5. Pacopacomama: (\d{6})[-_](\d{3})
+    if any(k in full_text for k in ("pacopacomama", "pacoma", "paco", "天然素人")):
+        if m := re.search(r"(\d{6})[-_](\d{3})", raw_filename):
+            prefix = (
+                "PACOPACOMAMA-" if any(p in raw_filename.lower() for p in ("pacopacomama", "pacoma", "paco")) else ""
+            )
+            return f"{prefix}{m.group(1)}_{m.group(2)}"
+        if filepath and (m := re.search(r"(\d{6})[-_](\d{3})", filepath)):
+            prefix = "PACOPACOMAMA-" if any(p in filepath.lower() for p in ("pacopacomama", "pacoma", "paco")) else ""
+            return f"{prefix}{m.group(1)}_{m.group(2)}"
+
+    # 6. 10Musume: (\d{6})[-_](\d{2})
+    if any(k in full_text for k in ("10musume", "10mu", "10人妹")):
+        if m := re.search(r"(\d{6})[-_](\d{2})", raw_filename):
+            prefix = "10MUSUME-" if any(p in raw_filename.lower() for p in ("10musume", "10mu")) else ""
+            return f"{prefix}{m.group(1)}_{m.group(2)}"
+        if filepath and (m := re.search(r"(\d{6})[-_](\d{2})", filepath)):
+            prefix = "10MUSUME-" if any(p in filepath.lower() for p in ("10musume", "10mu")) else ""
+            return f"{prefix}{m.group(1)}_{m.group(2)}"
+
+    # 7. Tokyo-Hot: (cz|n|k|red|kb)\d{4} or \d{4}
+    if any(k in full_text for k in ("tokyohot", "tokyo-hot", "tokyo_hot", "东京热")):
+        if m := re.search(r"(?i)(?<![a-zA-Z])(cz|n|k|red|kb)(\d{4})(?!\d)", raw_filename):
+            return f"{m.group(1).lower()}{m.group(2)}"
+        if m := re.search(r"(?i)tokyo[-_ ]*hot[-_ ]*(\d{4})", raw_filename):
+            return m.group(1)
+        if filepath:
+            if m := re.search(r"(?i)(?<![a-zA-Z])(cz|n|k|red|kb)(\d{4})(?!\d)", filepath):
+                return f"{m.group(1).lower()}{m.group(2)}"
+            if m := re.search(r"(?i)tokyo[-_ ]*hot[-_ ]*(\d{4})", filepath):
+                return m.group(1)
+
+    # 8. HEYZO: HEYZO[-_ ]*(\d{3,5})
+    if "heyzo" in full_text:
+        if m := re.search(r"(?i)heyzo[-_ ]*(\d{3,5})", raw_filename):
+            return f"HEYZO-{m.group(1)}"
+        if filepath and (m := re.search(r"(?i)heyzo[-_ ]*(\d{3,5})", filepath)):
+            return f"HEYZO-{m.group(1)}"
+
+    return None
 
 
 def is_uncensored(number: str) -> bool:
     if (
-        re.match(r"n\d{4}", number)
+        re.match(r"(?i)(?:cz|n|k|red|kb)\d{4}", number)
         or re.search(r"[^.]+\.\d{2}\.\d{2}\.\d{2}", number)
         or normalize_uncensored_digit_number(number)
+        or re.match(r"^\d{4}[-_]\d{3,4}$", number)
+        or re.match(r"^(C0930|H4610|H0930)-", number, re.IGNORECASE)
     ):
         return True
 
@@ -189,6 +279,10 @@ def long_name(short_name: str) -> str:
 def get_file_number(filepath: str, escape_string_list: list[str]) -> str:
     real_name = os.path.splitext(os.path.split(filepath)[1])[0].strip() + "."
 
+    # 0. 厂牌前置特定提取 (Brand Expert Rules First)
+    if brand_number := extract_brand_number(real_name, filepath):
+        return brand_number
+
     # 去除域名干扰（489155.com@、www.xxx.cn 等），减少对 escape_string_list 配置的依赖
     real_name = remove_disturb(real_name) + "."
 
@@ -218,6 +312,10 @@ def get_file_number(filepath: str, escape_string_list: list[str]) -> str:
     filename = (
         filename.replace("FC2-PPV", "FC2-").replace("FC2PPV", "FC2-").replace("--", "-").replace("GACHIPPV", "GACHI")
     )
+
+    # [Hook] 优先使用模块化的无码番号解析器（支持前后缀与父目录推导）
+    if uncensored_num := parse_uncensored_number(filepath, filename):
+        return uncensored_num
 
     # 处理 111111-111、111111_111、1pondo_111111_111、10musume_111111_01 这类无码数字番号
     if uncensored_digit_number := normalize_uncensored_digit_number(filename):

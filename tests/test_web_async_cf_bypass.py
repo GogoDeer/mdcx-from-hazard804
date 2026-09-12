@@ -1019,3 +1019,24 @@ async def test_is_cf_challenge_response_reads_stream_response_body():
 
     client = AsyncWebClient(timeout=1)
     assert await client._is_cf_challenge_response(_StreamResponse()) is True
+
+
+@pytest.mark.asyncio
+async def test_is_cf_challenge_response_does_not_drain_200_stream_without_content_type():
+    """200 OK 流式响应（即便缺失 content-type）绝不能调 acontent()，避免消费流队列导致后续卡死。"""
+
+    class _StreamImageResponse:
+        status_code = 200
+        headers = {"server": "cloudflare", "cf-ray": "xyz789"}
+        content = b""
+        acontent_called = False
+
+        async def acontent(self):
+            self.acontent_called = True
+            return b"fake binary payload"
+
+    resp = _StreamImageResponse()
+    client = AsyncWebClient(timeout=1)
+    is_cf = await client._is_cf_challenge_response(resp)
+    assert is_cf is False
+    assert resp.acontent_called is False

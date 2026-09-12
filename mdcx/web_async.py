@@ -1194,6 +1194,9 @@ class AsyncWebClient:
         同一响应多次判定重复读流（全库审查 B1）。
         """
         status = response.status_code
+        if status not in (403, 429, 503):
+            return False
+
         headers = {str(k): v for k, v in response.headers.items()}
         server = self._extract_header_case_insensitive(headers, "server").lower()
         cf_ray = self._extract_header_case_insensitive(headers, "cf-ray")
@@ -1677,44 +1680,43 @@ class AsyncWebClient:
                                 allow_redirects=allow_redirects,
                             )
 
-                    if enable_cf_bypass and self._trawl_adapter_enabled and not self._cf_bypass_enabled:
-                        self._log_cf("触发 TRAWL 适配层启动", host)
-                        started = await self._ensure_local_bypass()
-                        if not started:
-                            self._log_cf("TRAWL 适配层启动失败，跳过 bypass", host)
-
                     # 检测到 Cloudflare 挑战页：无论是否启用 bypass，都强制轮换该池指纹，
                     # 让重试有机会换新指纹（含 safari17_2_ios）绕过（missav 等站点有效）
-                    if host and await self._is_cf_challenge_response(resp):
+                    is_cf_challenge = bool(host and await self._is_cf_challenge_response(resp))
+                    if is_cf_challenge:
                         self._log_cf(f"🛑 Cloudflare 挑战页，轮换指纹重试: {method} {url}", host)
                         self._force_rotate_fingerprint(pool_base_key, fingerprint)
 
-                    if (
-                        enable_cf_bypass
-                        and self._cf_bypass_enabled
-                        and host
-                        and await self._is_cf_challenge_response(resp)
-                    ):
-                        self._log_cf(f"🛑 检测到 Cloudflare 挑战页: {method} {url}", host)
-                        self._cf_host_challenge_hits[host] = self._cf_host_challenge_hits.get(host, 0) + 1
-                        if bypass_round >= self._cf_request_bypass_rounds:
-                            error_msg = f"Cloudflare 挑战页持续存在，bypass 已达上限 ({self._cf_request_bypass_rounds})"
-                            retry = False
-                            self._log_cf(f"🚫 {error_msg}", host)
-                        else:
-                            target_url = self._merge_url_params(url, params)
-                            bypass_response, bypass_error = await self._try_bypass_cloudflare(
-                                host=host,
-                                method=method,
-                                target_url=target_url,
-                                headers=req_headers,
-                                cookies=req_cookies,
-                                data=data,
-                                json_data=json_data,
-                                timeout=timeout,
-                                allow_redirects=allow_redirects,
-                                use_proxy=bool((self.cf_bypass_proxy or "").strip()),
-                            )
+                    if enable_cf_bypass and is_cf_challenge:
+                        if self._trawl_adapter_enabled and not self._cf_bypass_enabled:
+                            self._log_cf("触发 TRAWL 适配层启动", host)
+                            started = await self._ensure_local_bypass()
+                            if not started:
+                                self._log_cf("TRAWL 适配层启动失败，跳过 bypass", host)
+
+                        if self._cf_bypass_enabled:
+                            self._log_cf(f"🛑 检测到 Cloudflare 挑战页: {method} {url}", host)
+                            self._cf_host_challenge_hits[host] = self._cf_host_challenge_hits.get(host, 0) + 1
+                            if bypass_round >= self._cf_request_bypass_rounds:
+                                error_msg = (
+                                    f"Cloudflare 挑战页持续存在，bypass 已达上限 ({self._cf_request_bypass_rounds})"
+                                )
+                                retry = False
+                                self._log_cf(f"🚫 {error_msg}", host)
+                            else:
+                                target_url = self._merge_url_params(url, params)
+                                bypass_response, bypass_error = await self._try_bypass_cloudflare(
+                                    host=host,
+                                    method=method,
+                                    target_url=target_url,
+                                    headers=req_headers,
+                                    cookies=req_cookies,
+                                    data=data,
+                                    json_data=json_data,
+                                    timeout=timeout,
+                                    allow_redirects=allow_redirects,
+                                    use_proxy=bool((self.cf_bypass_proxy or "").strip()),
+                                )
                             bypass_round += 1
 
                             if bypass_response is not None:
@@ -1759,7 +1761,7 @@ class AsyncWebClient:
                     # 检查响应状态
                     elif resp.status_code >= 300 and not (resp.status_code == 302 and resp.headers.get("Location")):
                         error_msg = f"HTTP {resp.status_code}"
-                        # 4xx/5xx 响应体常含服务器具体错误（如 Emby 400 的字段校验 JSON）。
+                        # 4xx/5xx 响应体常含服务器具体错误（如 Emby 400 的字段校验 JSON / GraphQL 错误）。
                         # 原只取状态码导致上层无从定位根因（议题 #88：演员同步 400 只见 "HTTP 400"）。
                         # 追加截断后的响应体，保留 "HTTP {status}" 前缀以兼容既有匹配/分类逻辑。
                         if resp.status_code >= 400:

@@ -72,6 +72,10 @@ def _ensure_selenium() -> bool:
 
         return True
     except ImportError:
+        # [Fix] 打包为 exe 运行时，sys.executable 指向自身 exe，绝不能尝试用 pip 安装，否则会重新拉起 GUI 进程
+        if getattr(sys, "frozen", False):
+            logger.info("打包环境中未内置 selenium，跳过自动安装（可改用外部 CF 代理服务）")
+            return False
         try:
             logger.info("selenium 未安装，正在自动安装...")
             subprocess.check_call([sys.executable, "-m", "pip", "install", "selenium"])

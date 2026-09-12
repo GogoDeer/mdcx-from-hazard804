@@ -380,3 +380,41 @@ def test_movie_number_lookup_values_dedup():
     """分隔符替换后与原值相同时去重"""
     assert movie_number_lookup_values("ABC123") == ["ABC123"]
     assert len(movie_number_lookup_values("ABC-123")) == 2
+
+
+@pytest.mark.parametrize(
+    ("file_path", "expected_number"),
+    [
+        (
+            r"I:\Incoming\Vdo\scan\input\heydouga 4037-531\heydouga 4037-531-real interview 316 Towa01.wmv",
+            "4037-531",
+        ),
+        (
+            r"I:\Incoming\Vdo\scan\input\heydouga 4037-531\heydouga 4037-531-2-milk-true stories interview 317 Towa sequal.wmv",
+            "4037-531",
+        ),
+        (
+            r"I:\Incoming\Vdo\scan\input\heydouga 4037-531\real interview 316 Towa01.wmv",
+            "4037-531",
+        ),
+        (
+            r"D:\test\『玲奈妊婦母乳』玲奈【ガチん娘！サンシャイン】実録heydouga4037-Ppv4-447X265Iris2_x265.mp4",
+            "4037-447",
+        ),
+        (r"D:\test\heydouga-4017-231-1.wmv", "4017-231"),
+        (r"D:\test\FC2-PPV-1234567.mp4", "FC2-1234567"),
+        (r"D:\test\fc2ppv_743423.mp4", "FC2-743423"),
+        (r"D:\test\FC2 123456-CD1.mp4", "FC2-123456"),
+        (r"D:\test\tokyo-hot-n1234.mp4", "n1234"),
+        (r"D:\test\tokyohot_cz0050.mp4", "cz0050"),
+        (r"D:\test\heyzo_1234.mp4", "HEYZO-1234"),
+    ],
+)
+def test_get_file_number_extracts_brand_numbers(file_path: str, expected_number: str):
+    from mdcx.number import get_file_number, is_uncensored
+
+    escape_strings = ["HEYDOUGA", "CARIBBEANCOM", "FC2"]
+    actual = get_file_number(file_path, escape_strings)
+    assert actual == expected_number
+    if not actual.startswith("FC2-"):
+        assert is_uncensored(actual) is True

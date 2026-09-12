@@ -18,6 +18,7 @@ from ..models.model_types import CrawlersResult
 from ..number import get_number_letters
 from ..utils import clean_list, get_used_time
 from ..utils.language import is_japanese, is_probably_english_for_translation
+from .actor_align import align_actor_with_media_server
 from .mosaic import normalize_mosaic
 
 AVWIKI_SCRAPING_TYPES = {
@@ -265,6 +266,7 @@ def map_actor_names(res: CrawlersResult, all_actors=False):
             continue
         actor_data = resources.get_actor_data(name)
         mapped_name = actor_data.get(lang.value) if isinstance(lang, Language) else actor_data.get(lang)
+        mapped_name = align_actor_with_media_server(name, mapped_name, actor_data)
         if mapped_name not in mapped:
             mapped.append(mapped_name)
 

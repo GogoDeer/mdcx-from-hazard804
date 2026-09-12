@@ -400,15 +400,19 @@ class MediaResourceContext:
         try:
             if response.status_code != 200:
                 return 0, 0
-            async for chunk in response.aiter_content(chunk_size):
-                file_head.write(chunk)
-                if file_head.tell() > MAX_IMAGE_PROBE_BYTES:
-                    return 0, 0
-                try:
-                    with Image.open(file_head) as img:
-                        return img.size
-                except Exception:
-                    continue
+            if getattr(response, "content", None):
+                with Image.open(BytesIO(response.content)) as img:
+                    return img.size
+            async with asyncio.timeout(15.0):
+                async for chunk in response.aiter_content(chunk_size):
+                    file_head.write(chunk)
+                    if file_head.tell() > MAX_IMAGE_PROBE_BYTES:
+                        return 0, 0
+                    try:
+                        with Image.open(file_head) as img:
+                            return img.size
+                    except Exception:
+                        continue
         except Exception:
             return 0, 0
         return 0, 0
@@ -417,10 +421,13 @@ class MediaResourceContext:
     async def _read_stream_content(response: Any) -> bytes | None:
         content = BytesIO()
         try:
-            async for chunk in response.aiter_content(64 * 1024):
-                content.write(chunk)
-                if content.tell() > _IMAGE_DOWNLOAD_MAX_BYTES:
-                    return None
+            if getattr(response, "content", None):
+                return response.content
+            async with asyncio.timeout(30.0):
+                async for chunk in response.aiter_content(64 * 1024):
+                    content.write(chunk)
+                    if content.tell() > _IMAGE_DOWNLOAD_MAX_BYTES:
+                        return None
             return content.getvalue() or None
         except Exception:
             return None
