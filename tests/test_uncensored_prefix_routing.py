@@ -66,3 +66,16 @@ def test_full_pipeline_filename_to_correct_site():
     assert route_uncensored_official(number) == "1pondo"
     number = get_file_number("pacopacomama-072625_099.mp4", [])
     assert route_uncensored_official(number) == "pacopacomama"
+
+
+# [Fix] CAPPV / CARIBPR 加勒比PR路由与番号提取测试
+def test_cappv_and_caribpr_pipeline():
+    cappv_num = get_file_number("CAPPV-081817_001.mp4", [])
+    assert cappv_num == "CAPPV-081817_001"
+    assert route_uncensored_official(cappv_num) == "caribbeancompr"
+    assert normalize_uncensored_official_id(cappv_num) == "081817_001"
+
+    caribpr_num = get_file_number("caribpr-071417_001.mp4", [])
+    assert caribpr_num == "CARIBPR-071417_001"
+    assert route_uncensored_official(caribpr_num) == "caribbeancompr"
+    assert normalize_uncensored_official_id(caribpr_num) == "071417_001"

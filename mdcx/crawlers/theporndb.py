@@ -274,6 +274,10 @@ class TheporndbCrawler(BaseCrawler):
                 except Exception:
                     pass
 
+            if not getattr(ctx.input, "allow_text_search", True):
+                ctx.debug("非欧美任务已启用安全防护，禁止 ThePornDB 执行文本模糊搜索")
+                raise CrawlerException("非欧美任务已禁用 ThePornDB 文本模糊搜索")
+
             search_keyword_list, series_ex, date = get_search_keyword(file_path)
             last_search_url = ""
             for search_keyword in search_keyword_list:

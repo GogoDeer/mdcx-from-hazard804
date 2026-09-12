@@ -16,8 +16,9 @@ _WEB_NUMBER_PREFIX_PATTERN = re.compile(
     r"^(?:_?1pondo|1pon|caribbeancom(?:pr)?|carib|pacopacomama|pacoma|paco|10musume|10mu)[_-]*",
     re.IGNORECASE,
 )
+# [Fix] 支持 cappv, caribpr
 _WEB_NUMBER_PREFIX_CAPTURE_PATTERN = re.compile(
-    r"^_?(?P<prefix>1pondo|1pon|caribbeancom(?:pr)?|carib|pacopacomama|pacoma|paco|10musume|10mu)[_-]*",
+    r"^_?(?P<prefix>1pondo|1pon|caribbeancom(?:pr)?|carib|cappv|caribpr|pacopacomama|pacoma|paco|10musume|10mu)[_-]*",
     re.IGNORECASE,
 )
 _WEB_NUMBER_SUFFIX_PATTERN = re.compile(r"^(?=.*\d)[a-z0-9]+(?:[-_][a-z0-9]+)*$", re.IGNORECASE)
@@ -28,6 +29,8 @@ _WEB_NUMBER_PREFIX_SITE_ALIASES = {
     "carib": "caribbeancom",
     "caribbeancom": "caribbeancom",
     "caribbeancompr": "caribbeancom",
+    "caribpr": "caribbeancom",
+    "cappv": "caribbeancom",
     "paco": "pacopacomama",
     "pacoma": "pacopacomama",
     "pacopacomama": "pacopacomama",
