@@ -173,8 +173,13 @@ def classify_scrape_task(task_input: CrawlTask, config: "Config", use_fixed_type
         # 固定 FC2 模式但番号格式不识别时，返回空站点列表而非抛异常，让上层正常处理"无结果"
         return ScrapeClassification(FixedScrapingType.FC2, "fixed", sites=[])
 
-    if re.search(r"[^.]+\.\d{2}\.\d{2}\.\d{2}", file_number) or (
-        "欧美" in file_path_str and "东欧美" not in file_path_str
+    if (
+        "japanhdv" in file_number.lower()
+        or "japanhdv" in file_path_str
+        or "javhub" in file_number.lower()
+        or "javhub" in file_path_str
+        or re.search(r"[^.]+\.\d{2}\.\d{2}\.\d{2}", file_number)
+        or ("欧美" in file_path_str and "东欧美" not in file_path_str)
     ):
         return ScrapeClassification(FixedScrapingType.OUMEI, "auto", sites=config.website_oumei)
 
@@ -376,6 +381,13 @@ class FileScraper:
                 ti = _dc_replace(task_input, language=lang, org_language=lang)
                 if site in MULTI_LANGUAGE_WEBSITES and lang == Language.UNDEFINED:
                     ti = _dc_replace(ti, language=Language.JP, org_language=Language.JP)
+                if site in (Website.STASHDB, Website.THEPORNDB) and classification.scraping_type in (
+                    FixedScrapingType.YOUMA,
+                    FixedScrapingType.WUMA,
+                    FixedScrapingType.SUREN,
+                    FixedScrapingType.FC2,
+                ):
+                    ti = _dc_replace(ti, allow_text_search=False)
                 web_data = await self._call_crawler(ti, site)
                 req_info.append(f"{sprint_source(*key)} ({web_data.debug_info.execution_time:.2f}s)")
                 if web_data.data is None:
@@ -708,6 +720,15 @@ class FileScraper:
             title_language, org_language = self._get_specific_crawler_language(website)
             task_input.language = title_language
             task_input.org_language = org_language
+            if website in (Website.STASHDB, Website.THEPORNDB) and classification.scraping_type in (
+                FixedScrapingType.YOUMA,
+                FixedScrapingType.WUMA,
+                FixedScrapingType.SUREN,
+                FixedScrapingType.FC2,
+            ):
+                task_input.allow_text_search = False
+            else:
+                task_input.allow_text_search = True
             try:
                 web_data = await self._call_crawler(task_input, website)
             except TimeoutError:

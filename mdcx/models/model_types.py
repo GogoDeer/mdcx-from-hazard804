@@ -3,7 +3,7 @@ import re
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from ..config.enums import FixedScrapingType, Language, Website
 from ..gen.field_enums import CrawlerResultFields
@@ -135,6 +135,8 @@ class CrawlerInput:
     language: Language
     org_language: Language
 
+    allow_text_search: bool = True
+
     @classmethod
     def empty(cls) -> "CrawlerInput":
         return FileInfo.empty().crawler_input()
@@ -144,14 +146,14 @@ class CrawlerInput:
 class CrawlTask(CrawlerInput):
     """刮削一个文件所需的信息"""
 
-    c_word: str
-    cd_part: str
-    destroyed: str
-    has_sub: bool
-    leak: str
-    website_name: str  # 用于重新刮削时指定网站
-    wuma: str
-    youma: str
+    c_word: str = ""
+    cd_part: str = ""
+    destroyed: str = ""
+    has_sub: bool = False
+    leak: str = ""
+    website_name: str = ""  # 用于重新刮削时指定网站
+    wuma: str = ""
+    youma: str = ""
 
     @classmethod
     def empty(cls) -> "CrawlTask":
@@ -408,6 +410,8 @@ class CrawlersResult(BaseCrawlerResult):
     # in FileInfo
     # 除 letters 不确定外, 其它字段是只读的, 所以后续流程可以直接从 FileInfo 获取
     letters: str  # 番号字母部分, 理论上 get_file_info 函数会返回这个字段
+    originalfilename: str = ""
+    originalfilepath: str = ""
 
     @classmethod
     def empty(cls) -> "CrawlersResult":
@@ -432,6 +436,8 @@ class CrawlersResult(BaseCrawlerResult):
             field_log="",
             field_sources=dict.fromkeys(CrawlerResultFields, ""),
             external_ids={},
+            originalfilename="",
+            originalfilepath="",
             letters="",
         )
 
@@ -493,6 +499,7 @@ class OtherInfo:
     poster_big: bool
     poster_size: tuple[int, int]
     thumb_size: tuple[int, int]
+    manifest: Any = None
 
     @classmethod
     def empty(cls) -> "OtherInfo":
@@ -511,6 +518,7 @@ class OtherInfo:
             poster_big=False,
             poster_size=(0, 0),
             thumb_size=(0, 0),
+            manifest=None,
         )
 
 
@@ -528,6 +536,7 @@ class ShowData(ScrapeResult):
     """
 
     show_name: str
+    manifest: Any = None
 
     @classmethod
     def empty(cls) -> "ShowData":
@@ -539,4 +548,5 @@ class ShowData(ScrapeResult):
             data=CrawlersResult.empty(),
             other=OtherInfo.empty(),
             show_name="",
+            manifest=None,
         )

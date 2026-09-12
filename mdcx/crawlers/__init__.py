@@ -25,13 +25,16 @@ from .fc2ppvdb import Fc2ppvdbCrawler
 from .freejavbt import FreejavbtCrawler
 from .getchu import GetchuCrawler
 from .iqqtv import IqqtvCrawler
+from .japanhdv import JapanhdvCrawler
 from .javbus import JavbusCrawler
 from .javday import JavdayCrawler
 from .javdb import JavdbCrawler
 from .javdb_api import JavdbApiCrawler
 from .javdb_app import JavdbAppCrawler
 from .javfree import JavfreeCrawler
+from .javhub import JavhubCrawler
 from .javlibrary import JavlibraryCrawler
+from .javstash import StashGraphQLCrawler  # [JavStash]
 from .libredmm import LibredmmCrawler
 from .lulubar import LulubarCrawler
 from .madou_club import MadouClubCrawler
@@ -43,6 +46,7 @@ from .mywife import MywifeCrawler
 from .official import OfficialCrawler
 from .prestige import PrestigeCrawler
 from .r18dev import R18devCrawler
+from .stashdb import StashDBCrawler  # [StashDB]
 from .thejavdb_api import TheJavdbApiCrawler
 from .theporndb import TheporndbCrawler
 from .xcity import XcityCrawler
@@ -81,6 +85,10 @@ register_crawler(MywifeCrawler)
 register_crawler(JavlibraryCrawler)
 register_crawler(OfficialCrawler)
 register_crawler(TheporndbCrawler)
+register_crawler(StashGraphQLCrawler)  # [JavStash]
+register_crawler(StashDBCrawler)  # [StashDB]
+register_crawler(JapanhdvCrawler)
+register_crawler(JavhubCrawler)
 
 # 模块名以数字开头（7mmtv），无法用常规 import 语法，走 importlib
 from importlib import import_module as _import_module  # noqa: E402

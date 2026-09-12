@@ -2,14 +2,25 @@
 import json
 import re
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Literal, cast
 from urllib.parse import urljoin
 
 from lxml import etree
 
 from .base import Context, CrawlerData, CrawlerException, get_year
 
-UncensoredOfficialSite = Literal["caribbeancom", "heyzo", "1pondo", "pacopacomama", "10musume"]
+# [Fix] 支持 caribbeancompr, c0930, h4610, h0930 官方无码站点
+UncensoredOfficialSite = Literal[
+    "caribbeancom",
+    "caribbeancompr",
+    "heyzo",
+    "1pondo",
+    "pacopacomama",
+    "10musume",
+    "c0930",
+    "h4610",
+    "h0930",
+]
 
 
 @dataclass(frozen=True)
@@ -27,6 +38,13 @@ UNCENSORED_OFFICIAL_SITES: dict[UncensoredOfficialSite, UncensoredOfficialSpec] 
         base_url="https://www.caribbeancom.com",
         studio="Caribbeancom",
         sample_base_url="https://smovie.caribbeancom.com",
+    ),
+    # [Fix] 支持加勒比PR官网
+    "caribbeancompr": UncensoredOfficialSpec(
+        source="caribbeancom",
+        base_url="https://www.caribbeancompr.com",
+        studio="CaribbeancomPR",
+        sample_base_url="https://smovie.caribbeancompr.com",
     ),
     "heyzo": UncensoredOfficialSpec(
         source="heyzo",
@@ -54,8 +72,28 @@ UNCENSORED_OFFICIAL_SITES: dict[UncensoredOfficialSite, UncensoredOfficialSpec] 
         json_base_url="https://www.10musume.com",
         sample_base_url="https://smovie.10musume.com",
     ),
+    # [Fix] 支持 C0930 / H4610 / H0930 CAT体系官方无码站点
+    "c0930": UncensoredOfficialSpec(
+        source="c0930",
+        base_url="https://www.c0930.com",
+        studio="C0930",
+        sample_base_url="https://smovie.c0930.com",
+    ),
+    "h4610": UncensoredOfficialSpec(
+        source="h4610",
+        base_url="https://www.h4610.com",
+        studio="H4610",
+        sample_base_url="https://smovie.h4610.com",
+    ),
+    "h0930": UncensoredOfficialSpec(
+        source="h0930",
+        base_url="https://www.h0930.com",
+        studio="H0930",
+        sample_base_url="https://smovie.h0930.com",
+    ),
 }
 
+# [Fix] 前缀路由支持加勒比PR与缩写别名
 DIGIT_PREFIX_ALIASES: dict[str, UncensoredOfficialSite] = {
     "1pon": "1pondo",
     "1pondo": "1pondo",
@@ -63,7 +101,9 @@ DIGIT_PREFIX_ALIASES: dict[str, UncensoredOfficialSite] = {
     "10musume": "10musume",
     "carib": "caribbeancom",
     "caribbeancom": "caribbeancom",
-    "caribbeancompr": "caribbeancom",
+    "caribbeancompr": "caribbeancompr",
+    "caribpr": "caribbeancompr",
+    "cappv": "caribbeancompr",
     "paco": "pacopacomama",
     "pacoma": "pacopacomama",
     "pacopacomama": "pacopacomama",
@@ -71,11 +111,13 @@ DIGIT_PREFIX_ALIASES: dict[str, UncensoredOfficialSite] = {
 
 DIGIT_NUMBER_RE = re.compile(r"^(?P<head>\d{6})(?P<sep>[-_])(?P<tail>\d{2,4})$")
 DIGIT_NUMBER_WITH_PREFIX_RE = re.compile(
-    r"^(?P<prefix>1pondo|1pon|10musume|10mu|caribbeancom|caribbeancompr|carib|pacopacomama|pacoma|paco)"
+    r"^(?P<prefix>1pondo|1pon|10musume|10mu|caribbeancom|caribbeancompr|carib|cappv|caribpr|pacopacomama|pacoma|paco)"
     r"[-_ ]*(?P<head>\d{6})(?P<sep>[-_])(?P<tail>\d{2,4})$",
     re.IGNORECASE,
 )
 HEYZO_RE = re.compile(r"^heyzo[-_ ]*(?P<id>\d{3,})$", re.IGNORECASE)
+CAT_NUMBER_WITH_PREFIX_RE = re.compile(r"^(?P<prefix>c0930|h4610|h0930)[-_ ]*(?P<id>[a-z]+\d+)$", re.IGNORECASE)
+CAT_PREFIXLESS_ID_RE = re.compile(r"^(?P<id>(?:ki|hitozuma|ori|gol|pla|tk|siro|sup)\d{4,6})$", re.IGNORECASE)
 
 
 def _clean_text(value: object) -> str:
@@ -88,6 +130,11 @@ def _dedupe(items: list[str]) -> list[str]:
 
 
 def split_names(value: object) -> list[str]:
+    if isinstance(value, list):
+        names: list[str] = []
+        for item in value:
+            names.extend(split_names(item))
+        return _dedupe(names)
     text = str(value or "")
     if not text.strip():
         return []
@@ -169,7 +216,86 @@ def _prefixless_digit_parts(number: str) -> tuple[str, str, str] | None:
     return None
 
 
+def route_uncensored_official_candidates(number: str) -> list[tuple[UncensoredOfficialSite, str]]:
+    """根据番号生成官方爬虫探测候选列表 (site, movie_id)。
+
+    对于带明确厂牌前缀的番号，返回单一确定站点；
+    对于无前缀的纯数字番号，返回按优先级排序的多个候选站点（支持自动平滑回退，如 1pondo -> caribbeancompr）。
+    """
+    value = (number or "").strip().lower().replace(" ", "")
+    if not value:
+        return []
+
+    if match := HEYZO_RE.fullmatch(value):
+        return [("heyzo", match.group("id"))]
+
+    if cat_match := CAT_NUMBER_WITH_PREFIX_RE.fullmatch(value):
+        prefix = cat_match.group("prefix").lower()
+        cat_id = cat_match.group("id").lower()
+        return [(cast(UncensoredOfficialSite, prefix), cat_id)]
+
+    if cat_id_match := CAT_PREFIXLESS_ID_RE.fullmatch(value):
+        cat_id = cat_id_match.group("id").lower()
+        return [("c0930", cat_id), ("h4610", cat_id), ("h0930", cat_id)]
+
+    prefix_match = DIGIT_NUMBER_WITH_PREFIX_RE.fullmatch(value)
+    if prefix_match:
+        prefix = prefix_match.group("prefix").lower()
+        alias_site = DIGIT_PREFIX_ALIASES.get(prefix)
+        head = prefix_match.group("head")
+        tail = prefix_match.group("tail")
+
+        if alias_site == "caribbeancom":
+            return [(alias_site, f"{head}-{tail}")]
+        if alias_site in {"caribbeancompr", "1pondo", "pacopacomama", "10musume"}:
+            return [(alias_site, f"{head}_{tail}")]
+
+    if match := DIGIT_NUMBER_RE.fullmatch(value):
+        head = match.group("head")
+        sep = match.group("sep")
+        tail = match.group("tail")
+        id_hyphen = f"{head}-{tail}"
+        id_under = f"{head}_{tail}"
+
+        if sep == "-":
+            return [
+                ("caribbeancom", id_hyphen),
+                ("caribbeancompr", id_under),
+                ("1pondo", id_under),
+            ]
+
+        if sep == "_":
+            if len(tail) == 2:
+                return [
+                    ("10musume", id_under),
+                    ("1pondo", id_under),
+                    ("caribbeancompr", id_under),
+                ]
+            if int(tail) >= 100:
+                return [
+                    ("pacopacomama", id_under),
+                    ("1pondo", id_under),
+                    ("caribbeancompr", id_under),
+                ]
+            # 尾号 < 100（如 001, 002）: 优先一本道，回退加勒比PR与东热
+            return [
+                ("1pondo", id_under),
+                ("caribbeancompr", id_under),
+                ("pacopacomama", id_under),
+            ]
+
+    return []
+
+
+def route_uncensored_official(number: str) -> UncensoredOfficialSite | None:
+    candidates = route_uncensored_official_candidates(number)
+    return candidates[0][0] if candidates else None
+
+
 def normalize_uncensored_official_id(number: str) -> str:
+    candidates = route_uncensored_official_candidates(number)
+    if candidates:
+        return candidates[0][1]
     value = (number or "").strip().lower().replace(" ", "")
     if match := HEYZO_RE.fullmatch(value):
         return match.group("id")
@@ -179,39 +305,10 @@ def normalize_uncensored_official_id(number: str) -> str:
     return value.strip("-_. ")
 
 
-def route_uncensored_official(number: str) -> UncensoredOfficialSite | None:
-    value = (number or "").strip().lower().replace(" ", "")
-    if not value:
-        return None
-
-    if HEYZO_RE.fullmatch(value):
-        return "heyzo"
-
-    prefix_match = DIGIT_NUMBER_WITH_PREFIX_RE.fullmatch(value)
-    if prefix_match:
-        prefix = prefix_match.group("prefix").lower()
-        alias_site = DIGIT_PREFIX_ALIASES[prefix]
-        if alias_site in {"caribbeancom", "1pondo", "pacopacomama", "10musume"}:
-            return alias_site
-
-    if match := DIGIT_NUMBER_RE.fullmatch(value):
-        sep = match.group("sep")
-        tail = match.group("tail")
-        if sep == "-":
-            return "caribbeancom"
-        if sep == "_":
-            if len(tail) == 2:
-                return "10musume"
-            if int(tail) >= 100:
-                return "pacopacomama"
-            return "1pondo"
-
-    return None
-
-
 def detail_url_for_uncensored_official(site: UncensoredOfficialSite, movie_id: str) -> str:
     spec = UNCENSORED_OFFICIAL_SITES[site]
-    if site == "caribbeancom":
+    # [Fix] 支持 caribbeancompr, c0930, h4610, h0930 官网路径
+    if site in ("caribbeancom", "caribbeancompr", "c0930", "h4610", "h0930"):
         return f"{spec.base_url}/moviepages/{movie_id}/index.html"
     if site == "heyzo":
         return f"{spec.base_url}/moviepages/{movie_id}/index.html"
@@ -224,20 +321,30 @@ def json_url_for_uncensored_official(site: UncensoredOfficialSite, movie_id: str
 
 
 async def crawl_uncensored_official(ctx: Context, client, number: str) -> CrawlerData | None:
-    site = route_uncensored_official(number)
-    if site is None:
+    candidates = route_uncensored_official_candidates(number)
+    if not candidates:
         return None
 
-    movie_id = normalize_uncensored_official_id(number)
-    if not movie_id:
-        return None
+    last_error: Exception | None = None
+    for site, movie_id in candidates:
+        ctx.debug(f"official uncensored probe: {site} ({movie_id})")
+        try:
+            # [Fix] 支持加勒比本站与 PR 站，CAT体系站点
+            if site in ("caribbeancom", "caribbeancompr"):
+                return await _crawl_caribbeancom(ctx, client, site, movie_id)
+            if site in ("c0930", "h4610", "h0930"):
+                return await _crawl_cat_site(ctx, client, site, movie_id)
+            if site == "heyzo":
+                return await _crawl_heyzo(ctx, client, movie_id)
+            return await _crawl_json_site(ctx, client, site, movie_id)
+        except CrawlerException as e:
+            last_error = e
+            ctx.debug(f"official uncensored site [{site}] failed: {e}, trying next candidate")
+            continue
 
-    ctx.debug(f"official uncensored route: {site} ({movie_id})")
-    if site == "caribbeancom":
-        return await _crawl_caribbeancom(ctx, client, movie_id)
-    if site == "heyzo":
-        return await _crawl_heyzo(ctx, client, movie_id)
-    return await _crawl_json_site(ctx, client, site, movie_id)
+    if last_error:
+        raise last_error
+    return None
 
 
 def _selector(html: str):
@@ -284,9 +391,10 @@ def _caribbean_spec_value(html, labels: set[str]) -> str:
     return ""
 
 
-async def _crawl_caribbeancom(ctx: Context, client, movie_id: str) -> CrawlerData:
-    spec = UNCENSORED_OFFICIAL_SITES["caribbeancom"]
-    detail_url = ctx.input.appoint_url or detail_url_for_uncensored_official("caribbeancom", movie_id)
+# [Fix] 接收 site 参数以区分加勒比本站与 PR 站，增加再生时间兼容与日期番号推断
+async def _crawl_caribbeancom(ctx: Context, client, site: UncensoredOfficialSite, movie_id: str) -> CrawlerData:
+    spec = UNCENSORED_OFFICIAL_SITES[site]
+    detail_url = ctx.input.appoint_url or detail_url_for_uncensored_official(site, movie_id)
     ctx.debug(f"official uncensored detail: {detail_url}")
     ctx.debug_info.detail_urls = [detail_url]
     html_content, error = await client.get_text(detail_url, encoding="euc-jp")
@@ -299,7 +407,10 @@ async def _crawl_caribbeancom(ctx: Context, client, movie_id: str) -> CrawlerDat
         raise CrawlerException("official uncensored data failed: title")
 
     release = normalize_release(_caribbean_spec_value(html, {"配信日", "発売日"}))
-    runtime = hms_to_minutes(_caribbean_spec_value(html, {"再生時間", "収録時間"}))
+    if not release and len(movie_id) >= 6 and movie_id[:6].isdigit():
+        mm, dd, yy = movie_id[:2], movie_id[2:4], movie_id[4:6]
+        release = f"20{yy}-{mm}-{dd}"
+    runtime = hms_to_minutes(_caribbean_spec_value(html, {"再生時間", "収録時間", "再生时间"}))
     actors = split_names(_caribbean_spec_value(html, {"出演", "女優"}))
     tags = split_tags(_caribbean_spec_value(html, {"タグ"}))
     series = _caribbean_spec_value(html, {"シリーズ"})
@@ -383,6 +494,112 @@ def _json_ld_actors(value: object) -> list[str]:
                 names.extend(split_names(item))
         return _dedupe(names)
     return split_names(value)
+
+
+# [Fix] 支持 C0930 / H4610 / H0930 CAT体系官方无码爬虫
+async def _crawl_cat_site(ctx: Context, client, site: UncensoredOfficialSite, movie_id: str) -> CrawlerData:
+    spec = UNCENSORED_OFFICIAL_SITES[site]
+    detail_url = ctx.input.appoint_url or detail_url_for_uncensored_official(site, movie_id)
+    ctx.debug(f"official uncensored detail: {detail_url}")
+    ctx.debug_info.detail_urls = [detail_url]
+    html_content, error = await client.get_text(detail_url, encoding="euc-jp")
+    if html_content is None:
+        raise CrawlerException(f"official uncensored request failed: {error}")
+
+    html = _selector(html_content)
+    raw_title = _first_xpath_text(
+        html,
+        "//div[contains(concat(' ', normalize-space(@class), ' '), ' moviePlay_title ')]//h1",
+        "//div[@class='moviePlay_title']//h1",
+        "//h1",
+    )
+    if not raw_title:
+        raise CrawlerException(f"official uncensored site [{site}] failed: title not found")
+
+    actress = raw_title
+    age = ""
+    if match := re.search(r"^(.*?)(?:\s*(\d{1,2})[歳|才])?$", raw_title):
+        actress = match.group(1).strip()
+        age = match.group(2) or ""
+
+    specs: dict[str, str] = {}
+    for dt in html.xpath("//dl//dt"):
+        label = _clean_text(dt.xpath("string()")).rstrip(":：").strip()
+        dd = dt.xpath("following-sibling::dd[1]")
+        if dd:
+            val = _clean_text(dd[0].xpath("string()"))
+            if label and val:
+                specs[label] = val
+
+    if not age and "年齢" in specs:
+        age = specs["年齢"].replace("歳", "").replace("才", "").strip()
+
+    release = normalize_release(specs.get("公開日") or specs.get("配信日"))
+    runtime = hms_to_minutes(specs.get("動画") or specs.get("再生時間") or specs.get("収録時間"))
+
+    def cat_tag_splitter(v):
+        return [item.strip() for item in re.split(r"[\s,/|、，\n\r\u3000\xa0]+", v or "") if item.strip()]
+
+    type_tags = cat_tag_splitter(specs.get("タイプ", ""))
+    play_tags = cat_tag_splitter(specs.get("プレイ内容", ""))
+    tags = _dedupe(type_tags + play_tags)
+
+    outline = ""
+    for p in html.xpath("//div[contains(concat(' ', normalize-space(@class), ' '), ' col-sm-4 ')]//p"):
+        p_text = _clean_text(p.xpath("string()"))
+        if (
+            len(p_text) > 20
+            and "videoタグ" not in p_text
+            and "レビュー" not in p_text
+            and "All contents" not in p_text
+            and "18 U.S.C." not in p_text
+        ):
+            outline = p_text
+            break
+    if not outline:
+        outline = _first_xpath_text(html, '//meta[@name="description"]/@content')
+
+    # movie.jpg 作为高清主海报与封面
+    video_poster = _first_xpath_text(html, "//video/@poster")
+    if video_poster:
+        thumb = _absolute_protocol_url(video_poster, spec.base_url)
+    else:
+        thumb = f"{spec.base_url}/moviepages/{movie_id}/images/movie.jpg"
+
+    actors = [actress] if actress else []
+    standard_number = (
+        ctx.input.number
+        if ctx.input.number and ctx.input.number.upper().startswith(f"{spec.studio}-")
+        else f"{spec.studio}-{movie_id}"
+    )
+
+    return CrawlerData(
+        number=standard_number,
+        title=raw_title,
+        originaltitle=raw_title,
+        actors=actors,
+        all_actors=actors,
+        outline=outline,
+        originalplot=outline,
+        tags=tags,
+        release=release,
+        year=get_year(release),
+        runtime=runtime,
+        score="",
+        series="",
+        directors=[],
+        studio=spec.studio,
+        publisher=spec.studio,
+        thumb=thumb,
+        poster=thumb,
+        extrafanart=[],  # members剧照需付费登录，外链302跳转登录页，留空避免触发剧照下载失败报错
+        trailer=f"{spec.sample_base_url}/moviepages/{movie_id}/sample.mp4",
+        image_download=False,
+        mosaic="无码",
+        external_id=detail_url,
+        wanted="",
+        source=spec.source,
+    )
 
 
 async def _crawl_heyzo(ctx: Context, client, movie_id: str) -> CrawlerData:
