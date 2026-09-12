@@ -63,24 +63,24 @@ if "%SRC_DIR%"=="src" if exist "trawl-goto-timeout.patch" (
 )
 
 rem verify/install deps inside the chosen source dir; bun installs per cwd package.json/bun.lock
-rem wrong dir = not installed; every-startup idempotent re-check (no-op is ~ms), covering missing deps and clone drift
+rem wrong dir = not installed. Skip when node_modules already present (zip ships complete deps).
 if exist "%SRC_DIR%\node_modules" (
-    echo [INFO] 校验依赖...
+    echo [INFO] 依赖已就绪，跳过安装
 ) else (
     echo [INFO] 正在安装依赖，请稍候（首次较慢）...
-)
-pushd "%~dp0%SRC_DIR%"
-"%BUN_EXE%" install --frozen-lockfile
-if errorlevel 1 (
-    echo [WARN] frozen lockfile 安装失败，尝试普通安装...
-    "%BUN_EXE%" install
-)
-set "INSTALL_ERR=%errorlevel%"
-popd
-if not "%INSTALL_ERR%"=="0" (
-    echo [ERROR] 依赖安装失败，请检查网络后重试
-    pause
-    exit /b 1
+    pushd "%~dp0%SRC_DIR%"
+    "%BUN_EXE%" install --frozen-lockfile --linker hoisted
+    if errorlevel 1 (
+        echo [WARN] frozen lockfile 安装失败，尝试普通安装...
+        "%BUN_EXE%" install --linker hoisted
+    )
+    set "INSTALL_ERR=%errorlevel%"
+    popd
+    if not "%INSTALL_ERR%"=="0" (
+        echo [ERROR] 依赖安装失败，请检查网络后重试
+        pause
+        exit /b 1
+    )
 )
 
 rem env vars
