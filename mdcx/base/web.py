@@ -1137,17 +1137,33 @@ def check_javstash_api_key() -> str:
             signal.show_log_text(tips)
             return tips
 
-        status_code = getattr(response, "status_code", None)
-        try:
-            import json as _json
+        status_code = getattr(response, "status_code", 200 if response else None)
+        if isinstance(response, dict):
+            res_data = response
+        elif response and hasattr(response, "text"):
+            try:
+                import json as _json
 
-            res_data = _json.loads(response.text) if response and hasattr(response, "text") else None
-        except Exception:
+                res_data = _json.loads(response.text)
+            except Exception:
+                res_data = None
+        else:
             res_data = None
 
         _, tips = parse_javstash_response(res_data, error=err, status_code=status_code)
 
-    signal.show_log_text(tips.replace("✅", " ✅ JavStash").replace("❗", " ❗ JavStash"))
+    if tips.startswith("✅"):
+        formatted_tips = f" ✅ JavStash {tips[1:].strip()}"
+    elif tips.startswith("❌"):
+        clean_tip = tips[1:].strip()
+        formatted_tips = f" ❌ {clean_tip}" if "JavStash" in clean_tip else f" ❌ JavStash {clean_tip}"
+    elif tips.startswith("❗"):
+        clean_tip = tips[1:].strip()
+        formatted_tips = f" ❗ {clean_tip}" if "JavStash" in clean_tip else f" ❗ JavStash {clean_tip}"
+    else:
+        formatted_tips = f" {tips.strip()}"
+
+    signal.show_log_text(formatted_tips)
     return tips
 
 
