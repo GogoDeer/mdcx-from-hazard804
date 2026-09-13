@@ -472,6 +472,7 @@ class Website(Enum):
     JAVSTASH = "javstash"  # [JavStash]
     STASHDB = "stashdb"  # [StashDB]
     XCITY = "xcity"
+    KIN8 = "kin8"
 
     OFFICIAL = "official"
 

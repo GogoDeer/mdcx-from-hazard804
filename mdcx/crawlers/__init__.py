@@ -35,6 +35,7 @@ from .javfree import JavfreeCrawler
 from .javhub import JavhubCrawler
 from .javlibrary import JavlibraryCrawler
 from .javstash import StashGraphQLCrawler  # [JavStash]
+from .kin8 import Kin8Crawler
 from .libredmm import LibredmmCrawler
 from .lulubar import LulubarCrawler
 from .madou_club import MadouClubCrawler
@@ -89,6 +90,7 @@ register_crawler(StashGraphQLCrawler)  # [JavStash]
 register_crawler(StashDBCrawler)  # [StashDB]
 register_crawler(JapanhdvCrawler)
 register_crawler(JavhubCrawler)
+register_crawler(Kin8Crawler)
 
 # 模块名以数字开头（7mmtv），无法用常规 import 语法，走 importlib
 from importlib import import_module as _import_module  # noqa: E402

@@ -10,6 +10,7 @@ from ..number import get_number_letters
 from .base import BaseCrawler, Context, CrawlerData, CrawlerException, get_year
 from .dahlia import DahliaCrawler
 from .faleno import FalenoCrawler
+from .kin8 import Kin8Crawler
 from .official_uncensored import crawl_uncensored_official
 from .prestige import PrestigeCrawler
 
@@ -17,6 +18,8 @@ OFFICIAL_CRAWLER_BY_PREFIX = {
     "DLDSS": DahliaCrawler,
     "FNS": FalenoCrawler,
     "JIMMY": FalenoCrawler,
+    "KIN8": Kin8Crawler,
+    "KIN8TENGOKU": Kin8Crawler,
 }
 
 DIRECTOR_PLACEHOLDER_CHARS = frozenset("-—－ー―‐~～·•. ")
@@ -153,6 +156,7 @@ class OfficialCrawler(BaseCrawler):
                 raise child_response.debug_info.error
             if child_response.data is None:
                 raise CrawlerException("官网子爬虫未返回数据")
+            child_response.data.source = self.site().value
             return child_response.data
 
         official_url = manager.computed.official_websites.get(get_number_letters(number))
