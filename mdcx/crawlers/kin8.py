@@ -169,7 +169,7 @@ class Kin8Crawler(BaseCrawler):
             poster=cover_url,
             extrafanart=extrafanart,
             trailer=trailer,
-            image_download=False,
+            image_download=True,
             mosaic="无码",
             external_id=detail_url,
             source=self.site().value,

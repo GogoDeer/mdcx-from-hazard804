@@ -972,6 +972,10 @@ async def thumb_download(
     # 下载图片
     cover_url = result.thumb
     cover_from = result.thumb_from
+    if not cover_url and result.thumb_list:
+        cover_from, cover_url = result.thumb_list[0]
+        result.thumb = cover_url
+        result.thumb_from = cover_from
     if cover_url:
         cover_list = result.thumb_list
         while (cover_from, cover_url) in cover_list:

@@ -397,7 +397,12 @@ async def _crawl_caribbeancom(ctx: Context, client, site: UncensoredOfficialSite
     detail_url = ctx.input.appoint_url or detail_url_for_uncensored_official(site, movie_id)
     ctx.debug(f"official uncensored detail: {detail_url}")
     ctx.debug_info.detail_urls = [detail_url]
-    html_content, error = await client.get_text(detail_url, encoding="euc-jp")
+    cookies = {
+        "cebsp_": "3",
+        "cebs": "1",
+        "_gat": "1",
+    }
+    html_content, error = await client.get_text(detail_url, encoding="euc-jp", cookies=cookies)
     if html_content is None:
         raise CrawlerException(f"official uncensored request failed: {error}")
 

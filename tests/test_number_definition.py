@@ -510,3 +510,12 @@ def test_get_file_number_extracts_brand_numbers(file_path: str, expected_number:
     assert actual == expected_number
     if not actual.startswith("FC2-"):
         assert is_uncensored(actual) is True
+
+
+def test_kin8_is_uncensored():
+    from mdcx.number import is_uncensored
+
+    assert is_uncensored("KIN8-3678") is True
+    assert is_uncensored("kin8-3601") is True
+    assert is_uncensored("KIN8TENGOKU-123") is True
+    assert is_uncensored("kin8-3477-4K") is True

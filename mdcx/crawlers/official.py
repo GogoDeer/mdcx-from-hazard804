@@ -10,6 +10,7 @@ from ..number import get_number_letters
 from .base import BaseCrawler, Context, CrawlerData, CrawlerException, get_year
 from .dahlia import DahliaCrawler
 from .faleno import FalenoCrawler
+from .heydouga import HeydougaCrawler, is_heydouga_number
 from .kin8 import Kin8Crawler
 from .official_uncensored import crawl_uncensored_official
 from .prestige import PrestigeCrawler
@@ -20,6 +21,7 @@ OFFICIAL_CRAWLER_BY_PREFIX = {
     "JIMMY": FalenoCrawler,
     "KIN8": Kin8Crawler,
     "KIN8TENGOKU": Kin8Crawler,
+    "HEYDOUGA": HeydougaCrawler,
 }
 
 DIRECTOR_PLACEHOLDER_CHARS = frozenset("-—－ー―‐~～·•. ")
@@ -144,6 +146,19 @@ class OfficialCrawler(BaseCrawler):
             result = uncensored_data.to_result()
             ctx.debug("official uncensored data success")
             return result
+
+        # Heydouga 官方爬虫智能委托（支持 4037-531、heydouga-4037-531 等格式）
+        if is_heydouga_number(number) or is_heydouga_number(str(ctx.input.file_path or "")):
+            child_response = await HeydougaCrawler(client=self.async_client).run(ctx.input)
+            ctx.debug_info.logs.extend(child_response.debug_info.logs)
+            ctx.debug_info.search_urls = child_response.debug_info.search_urls
+            ctx.debug_info.detail_urls = child_response.debug_info.detail_urls
+            if child_response.debug_info.error is not None:
+                raise child_response.debug_info.error
+            if child_response.data is None:
+                raise CrawlerException("Heydouga 官方子爬虫未返回数据")
+            child_response.data.source = self.site().value
+            return child_response.data
 
         number_letters = get_number_letters(number)
         official_crawler_cls = cast("type[BaseCrawler]", OFFICIAL_CRAWLER_BY_PREFIX.get(number_letters.upper()))

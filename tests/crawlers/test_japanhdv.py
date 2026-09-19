@@ -74,7 +74,11 @@ def test_extract_actress_and_date():
 def test_normalize_image_url():
     raw_poster = "//static.japanhdv.com/cache/940x528/50/content/videos/test/12.jpg"
     high_res = _normalize_image_url(raw_poster, high_res=True)
-    assert high_res == "https://static.japanhdv.com/cache/1920x1080/50/content/videos/test/12.jpg"
+    assert high_res == "https://static.japanhdv.com/cache/0x0/100/content/videos/test/12.jpg"
+
+    fallback_poster = "//static.japanhdv.com/cache/940x528/content/videos/test/12.jpg"
+    fallback_high_res = _normalize_image_url(fallback_poster, high_res=True)
+    assert fallback_high_res == "https://static.japanhdv.com/cache/1920x1080/content/videos/test/12.jpg"
 
     raw_sample = "//static.japanhdv.com/cache/220x330/50/content/videos/test/sample_001.jpg"
     norm_sample = _normalize_image_url(raw_sample, high_res=False)
@@ -111,7 +115,7 @@ async def test_parse_detail_page():
     assert "Kimono" in data.tags
     assert (
         data.thumb
-        == "https://static.japanhdv.com/cache/1920x1080/50/content/videos/Fuck_With_Black_Men_Yui_Watanabe/scene1/12.jpg"
+        == "https://static.japanhdv.com/cache/0x0/100/content/videos/Fuck_With_Black_Men_Yui_Watanabe/scene1/12.jpg"
     )
     assert len(data.extrafanart) == 2
     assert (

@@ -90,14 +90,17 @@ def _extract_actress_and_date(ctx: Context) -> tuple[str, str, str]:
 
 
 def _normalize_image_url(url: str, high_res: bool = False) -> str:
-    """Ensure https: scheme and convert thumbnail cache size to high res."""
+    """Ensure https: scheme and convert thumbnail cache size to high res / original uncompressed."""
     if not url:
         return ""
     if url.startswith("//"):
         url = f"https:{url}"
     if high_res:
-        # Cover: 940x528 / 220x330 -> 1920x1080
-        url = url.replace("/cache/940x528/", "/cache/1920x1080/").replace("/cache/220x330/", "/cache/1920x1080/")
+        # 优先使用官方原图无损尺寸规则 (0x0/100)，若不匹配则回退到 1920x1080
+        if re.search(r"/cache/\d+x\d+/\d+/", url):
+            url = re.sub(r"/cache/\d+x\d+/\d+/", "/cache/0x0/100/", url)
+        else:
+            url = url.replace("/cache/940x528/", "/cache/1920x1080/").replace("/cache/220x330/", "/cache/1920x1080/")
     else:
         # Sample photo: 220x330 -> 940x528
         url = url.replace("/cache/220x330/", "/cache/940x528/")

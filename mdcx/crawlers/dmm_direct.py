@@ -388,7 +388,20 @@ def generate_image_candidates(number: str) -> list[tuple[str, str]]:
     return unique
 
 
-_UNCENSORED_PREFIXES = ("FC2", "HEYZO", "1PONDO", "CARIB", "10MUCH", "200GANA", "PACO", "MKD", "MIUM")
+_UNCENSORED_PREFIXES = (
+    "FC2",
+    "HEYZO",
+    "1PONDO",
+    "CARIB",
+    "10MUCH",
+    "200GANA",
+    "PACO",
+    "MKD",
+    "MIUM",
+    "KIN8",
+    "HEYDOUGA",
+    "JAPANHDV",
+)
 
 _DMM_UPGRADE_CACHE_TTL = 10 * 60
 _DMM_UPGRADE_CACHE_MAX = 4096

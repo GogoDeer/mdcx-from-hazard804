@@ -24,6 +24,7 @@ from .fc2 import Fc2Crawler
 from .fc2ppvdb import Fc2ppvdbCrawler
 from .freejavbt import FreejavbtCrawler
 from .getchu import GetchuCrawler
+from .heydouga import HeydougaCrawler
 from .iqqtv import IqqtvCrawler
 from .japanhdv import JapanhdvCrawler
 from .javbus import JavbusCrawler
@@ -91,6 +92,7 @@ register_crawler(StashDBCrawler)  # [StashDB]
 register_crawler(JapanhdvCrawler)
 register_crawler(JavhubCrawler)
 register_crawler(Kin8Crawler)
+register_crawler(HeydougaCrawler)
 
 # 模块名以数字开头（7mmtv），无法用常规 import 语法，走 importlib
 from importlib import import_module as _import_module  # noqa: E402

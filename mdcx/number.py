@@ -201,6 +201,9 @@ def is_uncensored(number: str) -> bool:
         "YKB-",
         "bird",
         "bouga",
+        "KIN8-",
+        "KIN8TENGOKU-",
+        "KIN8",
     ]
     return any(number.upper().startswith(each.upper()) for each in key_start_word)
 

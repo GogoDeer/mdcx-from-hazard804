@@ -473,6 +473,7 @@ class Website(Enum):
     STASHDB = "stashdb"  # [StashDB]
     XCITY = "xcity"
     KIN8 = "kin8"
+    HEYDOUGA = "heydouga"
 
     OFFICIAL = "official"
 
