@@ -195,7 +195,7 @@
 
 ## mdcz 调研新增（2026-09-20，来源 https://github.com/ShotHeadman/mdcz ，GPL-3.0 与我们协议兼容，借鉴设计非翻译代码）
 
-### 21. 图床冷却持久化 + 失败分类 ⬜
+### 21. 图床冷却持久化 + 失败分类 ✅（2026-09-20 实现：core/image_host_cooldown.py，挂 _fetch_image + DMM 剧照下载，7 条测试）
 - **价值：高**　**难度：低**（1-2 天）
 - 参考 mdcz `cooldown/PersistentCooldownStore` + `ImageHostCooldownTracker`：
   - 失败分类精细化——传输层错误（TLS EOF/超时/连接重置）**不计**图床冷却（是网络问题不是图床问题）；仅可重试 HTTP 类（503/429/408）连续 ≥3 次才把该图床 URL 置入冷却，期内直接跳过该图源候选

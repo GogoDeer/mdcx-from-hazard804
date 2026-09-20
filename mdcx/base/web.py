@@ -1246,11 +1246,23 @@ async def download_dmm_extrafanart_with_filepath(url: str, file_path: Path, fold
         LogBuffer.web().write(f"\n 💡 DMM image invalid! {url}")
         return False
 
+    # 议题 #21: 图床冷却期内直接跳过（download_extrafanart_task 的 pics.dmm 回退不受影响）
+    from ..core.image_host_cooldown import record_failure as _record_host_failure
+    from ..core.image_host_cooldown import record_success as _record_host_success
+    from ..core.image_host_cooldown import remaining_seconds as _host_cooldown_remaining
+
+    skip_remaining = _host_cooldown_remaining(normalized_url)
+    if skip_remaining > 0:
+        LogBuffer.web().write(f"\n 🕒 图床冷却中，跳过: {urlsplit(normalized_url).hostname} ({skip_remaining:.0f}s)")
+        return False
+
     try:
         async with manager.acquire_computed() as computed:
             response, error = await computed.async_client.request("GET", normalized_url)
         if response is None:
             LogBuffer.log().write(f"\n 🥺 Download failed! {url} {error}")
+            if error:
+                _record_host_failure(normalized_url, error)
             return False
 
         true_url = normalize_media_url(str(response.url))
@@ -1269,6 +1281,7 @@ async def download_dmm_extrafanart_with_filepath(url: str, file_path: Path, fold
         if not is_webp:
             async with aiofiles.open(file_path, "wb") as f:
                 await f.write(response.content)
+            _record_host_success(normalized_url)
             return True
 
         byte_stream = BytesIO(response.content)
@@ -1279,6 +1292,7 @@ async def download_dmm_extrafanart_with_filepath(url: str, file_path: Path, fold
             img.save(file_path, quality=95, subsampling=0)
         finally:
             img.close()
+        _record_host_success(normalized_url)
         return True
     except Exception as e:
         LogBuffer.log().write(f"\n 🥺 Download failed! {url}\n    原因: {type(e).__name__}: {e}")
