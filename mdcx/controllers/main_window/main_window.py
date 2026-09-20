@@ -795,14 +795,18 @@ class MyMAinWindow(QMainWindow):
         # 设计基准宽 820：宽幅控件拉伸贴右缘、右缘锚定控件保持宽度平移、其余保持原位。
         main_page = ui.page_main
         main_w = main_page.width()
+        # 幂等：基于设计基准 820 的 cover_scale（全函数共用，须在统计栏/封面段前计算）
+        cover_scale = main_w / 820
         # 宽幅拉伸（设计右缘≈页面右缘）：文件路径标签、分隔线
         ui.label_file_path.resize(max(main_w - 34, 300), ui.label_file_path.height())
         ui.line_14.resize(max(main_w - 49, 300), ui.line_14.height())
-        # 右缘锚定（固定宽，右缘贴齐）：顶部开始按钮、结果树标题、结果树、清空按钮
+        # 右缘锚定（结果树宽随 cover_scale 拉伸贴向缩略图右缘、右缘贴齐页面右 18px；
+        # 议题 #173：固定 202 宽在最大化时离缩略图过远，改随窗口拉伸、两态间距一致）
+        tree_w = max(int(202 * cover_scale), 202)
         ui.pushButton_start_cap.move(max(main_w - 120 - 20, 20), 13)
         ui.label_result.move(max(main_w - 211 - 9, 300), 70)
-        ui.treeWidget_number.move(max(main_w - 202 - 18, 300), 110)
-        ui.treeWidget_number.resize(202, max(ui.treeWidget_number.height(), 100))
+        ui.treeWidget_number.move(max(main_w - tree_w - 18, 300), 110)
+        ui.treeWidget_number.resize(tree_w, max(ui.treeWidget_number.height(), 100))
         ui.pushButton_tree_clear.move(max(main_w - 20 - 40, 300), 110)
         # 选择目录按钮跟随开始按钮左移，保持 14px 视觉间距（设计 666 与 680 之间）
         ui.pushButton_select_media_folder.move(max(ui.pushButton_start_cap.x() - 101 - 14, 20), 13)
@@ -812,9 +816,6 @@ class MyMAinWindow(QMainWindow):
         # 按封面框的增高量整体**下移**，保持与「番号/标题/封面」同一左列（x 不变），
         # 从而不会被放大的黑框盖住。#135 修正：此前误将信息区整组**右移**到缩略图
         # 右侧，导致最小化时字段被推到窗口右半、与番号/标题/封面不对齐。
-        # 幂等：基于设计基准 820 的 cover_scale 计算，不依赖当前几何；设计宽下
-        # cover_scale=1 → info_delta=0，与设计稿完全一致，反复 resize 不漂移。
-        cover_scale = main_w / 820
         ui.label_poster.setGeometry(int(80 * cover_scale), 160, int(156 * cover_scale), int(220 * cover_scale))
         ui.label_thumb.setGeometry(int(252 * cover_scale), 160, int(328 * cover_scale), int(220 * cover_scale))
         # 议题 #144: 框放大后原图按新框尺寸重渲染(窗口缩放与图片显示同步)
