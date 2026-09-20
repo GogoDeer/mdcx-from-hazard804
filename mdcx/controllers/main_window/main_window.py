@@ -259,6 +259,7 @@ class MyMAinWindow(QMainWindow):
         # QStackedWidget 只会把当前可见页 resize 到自身尺寸，休眠页永远停留在设计尺寸；
         # 切页后必须重新同步一次内部几何，否则"先改窗口尺寸再切页"时页面内容全部按陈旧尺寸布局
         self.Ui.stackedWidget.currentChanged.connect(self._sync_page_layouts)
+        self.Ui.stackedWidget.currentChanged.connect(self._on_page_change_nfo_panel)
         self._bind_system_theme_refresh()
         self.cutwindow = CutWindow(self)
         self.preview_image_loader = PreviewImageLoader(self)
@@ -2352,6 +2353,25 @@ class MyMAinWindow(QMainWindow):
             return
         self.Ui.widget_nfo.hide()
         self._nfo_editor_snapshot = None
+
+    def _on_page_change_nfo_panel(self, index: int) -> None:
+        """议题 #177: 切页时暂隐编辑 NFO 面板(非关闭, 表单与结果树选中态保留),
+        切回主界面自动恢复; 有未保存改动时取消切页以留在主界面继续编辑。"""
+        nfo = self.Ui.widget_nfo
+        if index != 0:
+            if not nfo.isHidden():
+                if self._nfo_editor_is_dirty() and not self._confirm_nfo_editor_leave():
+                    stacked = self.Ui.stackedWidget
+                    stacked.blockSignals(True)
+                    stacked.setCurrentIndex(0)
+                    stacked.blockSignals(False)
+                    return
+                nfo.hide()
+                self._nfo_page_hiding = True
+        elif getattr(self, "_nfo_page_hiding", False):
+            nfo.show()
+            self._sync_nfo_overlay_geometry()
+            self._nfo_page_hiding = False
 
     def _clear_main_info_panel(self, *, force: bool = False) -> None:
         if not force and not self.Ui.widget_nfo.isHidden() and not self._confirm_nfo_editor_leave():
