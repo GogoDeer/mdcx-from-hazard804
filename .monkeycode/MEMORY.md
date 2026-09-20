@@ -60,6 +60,7 @@
   - **仓库根 `config.json` 是脏配置**（含已删站点值），验证配置/网络栈行为须用 `Config()` 默认配置写临时文件再指 `manager.path`。
   - 泄漏/累积类问题先写最小复现脚本量化（gc/asyncio.all_tasks 计数 + 对照实验区分"每次泄漏"与"泄漏一次钉住"）。
   - **行为修复"先复现测试跑红 → 修 → 绿"**；修复后反向审查边界与调用点语义。pytest-asyncio strict 模式：async 测试文件顶部须 `pytestmark = pytest.mark.asyncio`。
+  - **锁「检测结果回标下拉」必须喂生产形态 spec，不能手造 `name=site.value`**（#174 实证）：#129 测试用 `NetworkCheckSpec(name=site.value, site=THEPORNDB)` 合并缓存全绿，但生产 ThePornDB 项 `name="ThePornDB Token"` 且漏挂 `site=`，真实检测写不进缓存。凡回标链路测试，spec 的 `name`/`site`/`group` 要从 `_build_static_specs`/`_build_site_specs` 取或按生产字段逐项对齐。
   - 结构约束类修复用 **AST 哨兵测试**锁定位置；写完拿修复前代码反向喂哨兵确认能判失败（防恒真）。注意 ast 无 `node.await` 属性——await 调用要找 `ast.Await` 包装节点。
   - conftest 用 dummy 替换了 `mdcx.config.manager`/`resources`/`signals`；独立验证脚本须 import mdcx 前手工注入同样 dummy。**dummy 桩加方法时同步更新 conftest 注释**（缺方法会以 AttributeError 形态在 Qt 测试里触发 qFatal abort）。
   - **subagent 排查要求输出"已排除假设清单+理由"**；标注"已验证"的结论不可直接采信（实证：22 项宣称 11 项编造/夸大），修复前必须独立复现脚本重现每一条。
