@@ -898,23 +898,38 @@ def test_adaptive_window_sizes_matrix():
     assert _adaptive_window_sizes(500, 350) == (400, 300, 450, 300)
 
 
-def test_main_window_applies_adaptive_sizes(win, app):
-    """集成：min 尺寸在构造时按屏应用；默认尺寸在首次 showEvent 按屏自适应。"""
-    from PyQt6.QtWidgets import QApplication
+def test_main_window_applies_adaptive_sizes(win, app, monkeypatch):
+    """集成：min 尺寸在构造时按屏应用；默认尺寸在首次 showEvent 按屏自适应。
 
+    全程用 stub screen（固定 1024x768），禁触真实 QScreen API——
+    Windows offscreen 上调用 availableGeometry 会让 pytest 收尾阶段
+    偶发崩溃（探针 #185 系列实证：删本测试的原始版本即三连绿）。
+    """
+    from types import SimpleNamespace
+
+    from PyQt6.QtCore import QRect
+
+    from mdcx.controllers.main_window import main_window as mw_mod
     from mdcx.controllers.main_window.init import _adaptive_window_sizes
 
-    screen = QApplication.primaryScreen()
-    assert screen is not None, "前置失败：offscreen 平台应有虚拟屏"
-    avail = screen.availableGeometry()
-    min_w, min_h, def_w, def_h = _adaptive_window_sizes(avail.width(), avail.height())
-    assert win.minimumWidth() == min_w, f"最小宽未自适应: {win.minimumWidth()} != {min_w}"
-    assert win.minimumHeight() == min_h, f"最小高未自适应: {win.minimumHeight()} != {min_h}"
-    win.show()
-    app.processEvents()
-    assert (win.width(), win.height()) == (def_w, def_h), (
-        f"首次显示未按屏自适应: {win.width()}x{win.height()} != {def_w}x{def_h}"
-    )
+    stub = SimpleNamespace(availableGeometry=lambda: QRect(0, 0, 1024, 768))
+    monkeypatch.setattr(type(app), "primaryScreen", lambda *a, **kw: stub, raising=True)
+    monkeypatch.setattr(mw_mod.MyMAinWindow, "screen", lambda self: stub)
+
+    probe = mw_mod.MyMAinWindow()
+    try:
+        min_w, min_h, def_w, def_h = _adaptive_window_sizes(1024, 768)
+        assert probe.minimumWidth() == min_w, f"最小宽未自适应: {probe.minimumWidth()} != {min_w}"
+        assert probe.minimumHeight() == min_h, f"最小高未自适应: {probe.minimumHeight()} != {min_h}"
+        probe.show()
+        app.processEvents()
+        assert (probe.width(), probe.height()) == (def_w, def_h), (
+            f"首次显示未按屏自适应: {probe.width()}x{probe.height()} != {def_w}x{def_h}"
+        )
+    finally:
+        probe.close()
+        probe.deleteLater()
+        app.processEvents()
 
 
 # ============ 议题 #102：四项 UI 交互模拟验证 ============
