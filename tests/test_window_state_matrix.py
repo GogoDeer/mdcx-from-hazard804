@@ -888,10 +888,10 @@ def test_adaptive_window_sizes_matrix():
     """_adaptive_window_sizes 纯函数：常见屏幕档位的 (min_w, min_h, def_w, def_h)。"""
     from mdcx.controllers.main_window.init import _adaptive_window_sizes
 
-    # 1080p 无缩放（可用 1920x1040）：回到设计值，主页面内容完整
-    assert _adaptive_window_sizes(1920, 1040) == (850, 650, 1030, 700)
+    # 1080p 无缩放（可用 1920x1040）：默认放大到 1280x860（cover_scale≈1.30）
+    assert _adaptive_window_sizes(1920, 1040) == (850, 650, 1280, 860)
     # 1080p 125% 缩放（逻辑 1536x864）：92ef2437 的原始诉求——不锁死 700，仍可缩到 648
-    assert _adaptive_window_sizes(1536, 864) == (850, 648, 1030, 700)
+    assert _adaptive_window_sizes(1536, 864) == (850, 648, 1280, 734)
     # 小屏（1024x600 可用）：默认/最小均按比例收，首启不占满
     assert _adaptive_window_sizes(1024, 600) == (614, 450, 921, 510)
     # 超小屏下限钳制：不得低于 400x300
