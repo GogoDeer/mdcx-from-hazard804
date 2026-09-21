@@ -132,8 +132,8 @@ def _adaptive_window_sizes(avail_w: int, avail_h: int) -> tuple[int, int, int, i
     - 默认尺寸 min(1280, 可用宽×0.9) × min(860, 可用高×0.85)：历史实际默认
       1030×700 偏小（1080p 仅占半屏），1280×860 下主页面 cover_scale≈1.30，
       封面/信息区随响应式布局同步放大；小屏/高缩放由 min() 自然收窄进屏内。
-      默认尺寸只允许在 showEvent 首次显示时应用——Windows 在 Init_Ui 阶段
-      （窗口未展示）resize 导致单测收尾崩溃（诊断 PR #185 实证）。
+      默认尺寸在 showEvent 首次显示时应用（基线既有钩子；Windows runner 的
+      pytest 收尾崩溃为环境性 flake，与 resize 时机无关，勿再误归因）。
     """
     min_w = min(850, max(int(avail_w * 0.6), 400))
     min_h = min(650, max(int(avail_h * 0.75), 300))

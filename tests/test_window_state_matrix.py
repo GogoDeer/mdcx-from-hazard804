@@ -899,11 +899,7 @@ def test_adaptive_window_sizes_matrix():
 
 
 def test_main_window_applies_adaptive_sizes(win, app):
-    """集成：min 尺寸在构造时按屏应用；默认尺寸在首次 showEvent 按屏自适应。
-
-    默认尺寸只允许 showEvent 应用——Init_Ui 阶段 resize 会崩 Windows 测试收尾
-    （诊断 PR #185），此处同时锁定该时序：show 前不得已被自适应 resize 过。
-    """
+    """集成：min 尺寸在构造时按屏应用；默认尺寸在首次 showEvent 按屏自适应。"""
     from PyQt6.QtWidgets import QApplication
 
     from mdcx.controllers.main_window.init import _adaptive_window_sizes

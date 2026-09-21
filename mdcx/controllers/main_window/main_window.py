@@ -545,12 +545,7 @@ class MyMAinWindow(QMainWindow):
         super().showEvent(a0)
 
     def _apply_adaptive_default_size(self) -> None:
-        """默认尺寸自适应（历史固定 1030x700 偏小，现按所在屏可用区缩放，大屏 1280x860）。
-
-        只能在首次 showEvent 应用：Init_Ui 阶段（窗口未展示）调用 resize 会让
-        Windows 上的 pytest 进程在全部用例通过后的收尾阶段崩溃退出
-        （main 4ae34a61 两次实证，诊断 PR #185 二分锁定）。
-        """
+        """默认尺寸自适应（历史固定 1030x700 偏小，现按所在屏可用区缩放，大屏 1280x860）。"""
         screen = self.screen()
         if screen is not None:
             avail = screen.availableGeometry()
