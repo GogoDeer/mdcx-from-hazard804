@@ -418,3 +418,15 @@ signals_module.signal = _DummySignals()
 signals_module.signal_qt = signals_module.signal
 signals_module.set_signal = lambda signal_instance: None
 sys.modules.setdefault("mdcx.signals", signals_module)
+
+
+def pytest_sessionfinish(session, exitstatus):
+    # Windows runner 实证：同进程构造多个 MyMAinWindow（各含 QSystemTrayIcon）
+    # 时，解释器收尾阶段的 Qt C++ 对象析构会段错误——Linux 表现为 SIGSEGV(139)、
+    # Windows 表现为 abort(退码 1)，且都发生在"全部用例已通过、汇总已打印"之后。
+    # 全部通过时直接 os._exit(0) 跳过解释器收尾，绕开析构崩溃；有失败时走正常
+    # 退出路径，保留 pytest 的完整失败报告与退出码语义。
+    import os
+
+    if exitstatus == 0:
+        os._exit(0)
