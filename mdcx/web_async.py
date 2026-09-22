@@ -10,6 +10,8 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 from io import BytesIO
 from pathlib import Path
 from typing import Any
@@ -583,6 +585,11 @@ class AsyncWebClient:
         self._cf_retry_after_bypass_base_delay = 1.2
         self._cf_retry_after_bypass_jitter = 1.3
         self._retry_sleep_jitter = 0.4
+        # 429/503 限流冷却：host → 最早可再发请求的 monotonic 时刻（跨协程共享）。
+        # 站点回 Retry-After 时按其值冷却（cap 防被超大值拖死），冷却期内所有请求在
+        # 发出前等待——固定限速桶只管速率，挡不住服务端明确要求的暂停时长。
+        self._retry_after_until: dict[str, float] = {}
+        self._retry_after_cap_seconds = 300.0
         self._fingerprint_states_by_pool_base: dict[str, _FingerprintState] = {}
         self._excluded_fingerprint_by_pool_base: dict[str, str] = {}
         self._fingerprint_default_lifetime_range = (20 * 60.0, 45 * 60.0)
@@ -1164,6 +1171,52 @@ class AsyncWebClient:
             429,  # Too Many Requests
             504,  # Gateway Timeout
         )
+
+    def _parse_retry_after_seconds(self, response: Response) -> float | None:
+        """解析 Retry-After（RFC 9110：整数秒或 HTTP-date），超 cap 截断。"""
+        try:
+            raw = response.headers.get("Retry-After")
+        except Exception:
+            return None
+        if raw is None:
+            return None
+        seconds: float | None = None
+        text = str(raw).strip()
+        try:
+            seconds = float(text)
+        except ValueError:
+            try:
+                dt = parsedate_to_datetime(text)
+            except (ValueError, TypeError):
+                return None
+            if dt is None:
+                return None
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=UTC)
+            seconds = (dt - datetime.now(UTC)).total_seconds()
+        if seconds <= 0:
+            return None
+        return min(seconds, self._retry_after_cap_seconds)
+
+    def _apply_retry_after_cooldown(self, host: str, response: Response) -> None:
+        """把 Retry-After 记为该 host 的冷却截止点；重复 429 取更远时刻。"""
+        if not host:
+            return
+        seconds = self._parse_retry_after_seconds(response)
+        if not seconds:
+            return
+        until = time.monotonic() + seconds
+        self._retry_after_until[host] = max(self._retry_after_until.get(host, 0.0), until)
+        self._log(f"⏳ {host} 被限流(HTTP {response.status_code})，按 Retry-After 冷却 {seconds:.0f}s")
+
+    async def _wait_retry_after_cooldown(self, host: str) -> None:
+        """冷却期内在发请求前等待（同 host 并发协程共用同一截止点）。"""
+        if not host:
+            return
+        remaining = self._retry_after_until.get(host, 0.0) - time.monotonic()
+        if remaining > 0:
+            self._log(f"⏳ {host} 限流冷却中，等待 {remaining:.1f}s 后再发请求")
+            await asyncio.sleep(remaining)
 
     def _extract_http_status_from_bypass_error(self, error: str, *, prefix: str) -> int | None:
         if not error:
@@ -1763,6 +1816,7 @@ class AsyncWebClient:
                 )
                 pool_key = HostPoolManager.key_for_request(url, request_proxy, fingerprint)
                 pool_base_key = HostPoolManager.key_for_url(url, request_proxy)
+                await self._wait_retry_after_cooldown(host)
                 try:
                     req_headers = dict(prepared_headers)
                     req_cookies = self._merge_cookies(cookies)
@@ -1895,6 +1949,8 @@ class AsyncWebClient:
                                 body_preview = ""
                             if body_preview:
                                 error_msg = f"{error_msg} body={body_preview}"
+                        if resp.status_code in (429, 503):
+                            self._apply_retry_after_cooldown(host, resp)
                         retry = self._is_retryable_status_code(resp.status_code)
                         if retry and attempt < retry_count - 1:
                             await self._record_retryable_response_failure(error_msg, pool_key=pool_key)
