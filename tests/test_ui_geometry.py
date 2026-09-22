@@ -346,49 +346,58 @@ def test_page_main_info_fields_cleared_of_cover_boxes() -> None:
     win = mw_mod.MyMAinWindow()
     win._app = _app  # 挂上 app 引用防 GC
     win.resize(1920, 1020)  # 模拟报告人实机（原生边框最大化）
+    win.show()
+    _app.processEvents()
+    # 首次 show 的 resizeEvent 同步只跑一遍——补一次确保 22 个信息区控件完成 reparent
+    win._sync_page_layouts()
     _app.processEvents()
 
     ui = win.Ui
-    avail_w = max(1920 - 212, 400)
-    cover_scale = avail_w / 820
-    cover_bottom = int(160 + 220 * cover_scale)
-    info_delta = cover_bottom - 380
-    thumb_right = int(580 * cover_scale)
-    # 统一右界 info_right（2026-09-22）：图框/下划线/勾选框/图标排右缘贴结果树左缘-13
-    tree_w = max(int(202 * cover_scale), 202)
-    tree_x = max(avail_w - tree_w - 18, 300)
-    info_right = max(tree_x - 13, thumb_right)
-    wide_w = max(info_right - 70, 60)
-    narrow_w = max(int(220 * cover_scale), 60)
-    right_value_x = int(350 * cover_scale)
-    right_line_w = max(info_right - right_value_x, 60)
+    # 2026-09-22：cover_scale 收口为 MyMAinWindow._cover_scale 共享公式（测试同源）；
+    # 信息区已 reparent 进滚动容器——页面坐标用 conftest.page_pos 映射
+    from mdcx.controllers.main_window.main_window import MyMAinWindow
+    from tests.conftest import main_page_geometry
 
-    # 横向：左列标签保持设计 x=30（与「番号/标题/封面」对齐）；值/下划线按议题 #141
-    # 等比例加长——简介/标签与右列下划线右缘延伸到统一右界 info_right，左列窄字段 ×scale。
+    geo = main_page_geometry(ui)
+    cover_scale = geo["scale"]
+    info_right = geo["info_right"]
+    page_pos = geo["page_pos"]
+    for nm in MyMAinWindow._INFO_SCROLL_WIDGETS:
+        assert getattr(ui, nm).parent().objectName() == "_info_scroll_inner", f"{nm} 未 reparent 进滚动容器"
+    wide_w = max(info_right - 30 - 24 - 40, 60)
+    narrow_w = max(int(220 * cover_scale), 60)
+    right_line_w = max(info_right - int(350 * cover_scale) - 24, 60)
+
+    # 横向：左列标签（容器内 x=0，页面=30）；下划线右缘贴统一右界 info_right
     for nm in ("label_18", "label_33", "label_13", "label_23", "label_30"):
-        assert getattr(ui, nm).x() == 30, f"#135 回归：{nm} 左缘未保持设计 x=30"
+        assert page_pos(getattr(ui, nm)).x() == 30, f"#135 回归：{nm} 左缘未保持设计 x=30"
     for nm in ("label_outline", "label_tag", "line_6", "line_7"):
         w = getattr(ui, nm)
-        assert w.x() == 70, f"#141：{nm} 左缘应为 70"
+        assert page_pos(w).x() == 70, f"#141：{nm} 左缘应为 70"
         assert w.width() == wide_w, f"#141：{nm} 宽度未延伸到统一右界（{w.width()} != {wide_w}）"
-        assert w.x() + w.width() == info_right, f"#141：{nm} 右缘未到统一右界 info_right"
+        assert page_pos(w).x() + w.width() == info_right - 24, f"#141：{nm} 右缘未到统一右界 info_right"
     for nm in ("label_release", "label_director", "label_studio", "line_8", "line_12", "line_13"):
         w = getattr(ui, nm)
-        assert w.x() == 70
+        assert page_pos(w).x() == 40 + 30, f"#141：{nm} 页面左缘应为 70（容器内 40）"
         assert w.width() == narrow_w, f"#141：{nm} 宽度未按 ×scale 加长"
     for nm in ("label_31", "label_22", "label_24"):
-        assert getattr(ui, nm).x() == int(310 * cover_scale), f"#141：{nm} 右列标签未随 ×scale 右移"
+        assert page_pos(getattr(ui, nm)).x() == int(310 * cover_scale), f"#141：{nm} 右列标签未随 ×scale 右移"
     for nm in ("label_series", "label_runtime", "label_publish", "line_9", "line_10", "line_11"):
         w = getattr(ui, nm)
-        assert w.x() == right_value_x
+        assert page_pos(w).x() == int(350 * cover_scale), f"#141：{nm} 页面左缘应为 350×scale"
         assert w.width() == right_line_w, f"#141：{nm} 宽度未延伸到统一右界"
-        assert w.x() + w.width() == info_right, f"#141：{nm} 右缘未到统一右界 info_right"
-    # 纵向：尺寸文字/勾选框 顶须等于封面底（不被压叠）
+        assert page_pos(w).x() + w.width() == info_right - 24, (
+            f"#141：{nm} 右缘未到统一右界 info_right（预留滚动条 24）"
+        )
+    # 纵向：尺寸文字/勾选框 顶须等于封面底（不被压叠；信息区滚动化后无 info_delta）
     for nm in ("label_poster_size", "label_thumb_size", "checkBox_cover"):
         w = getattr(ui, nm)
-        assert w.y() == cover_bottom, f"#124 回归：{nm} 顶 {w.y()} 未跟随封面底 {cover_bottom}，纵向压叠"
+        assert w.y() == geo["cover_bottom"], f"#124 回归：{nm} 顶 {w.y()} 未跟随封面底 {geo['cover_bottom']}，纵向压叠"
     # 纵向：信息区首行（设计 y=430）须下移到封面底之下，且偏移量一致
     for nm in ("label_18", "label_outline"):
         w = getattr(ui, nm)
-        assert w.y() == 430 + info_delta, f"#135 回归：{nm} 未按封面增高下移（y={w.y()}）"
-        assert w.y() >= cover_bottom, f"#135 回归：{nm} 仍在封面框内（y={w.y()} < {cover_bottom}）"
+        # 信息区滚动化后：简介行在容器内 y=0，页面坐标 = info_top
+        assert page_pos(w).y() == geo["info_top"], f"#135 回归：{nm} 未对齐滚动容器顶（y={page_pos(w).y()}）"
+        assert page_pos(w).y() >= geo["cover_bottom"], (
+            f"#135 回归：{nm} 仍在封面框内（y={page_pos(w).y()} < {geo['cover_bottom']}）"
+        )

@@ -5241,7 +5241,7 @@
                                                   <string notr="true">color: rgb(8, 128, 128);</string>
                                                 </property>
                                                 <property name="text">
-                                                  <string>&lt;p&gt;将按 下方「Emby视频标题」、「设置」-「翻译」、&lt;br&gt;「设置」-「NFO」等的设置项，利用本地 nfo 更新 nfo 信息&lt;/p&gt;</string>
+                                                  <string>&lt;p&gt;将按「设置→命名」的「Emby视频标题」、&lt;br&gt;「设置→翻译」「设置→NFO」等的设置项，利用本地 nfo 更新 nfo 信息&lt;/p&gt;</string>
                                                 </property>
                                               </widget>
                                             </item>

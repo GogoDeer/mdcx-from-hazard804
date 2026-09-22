@@ -1,11 +1,10 @@
-"""议题 #144/#152/#154 回归: 最大化时封面/缩略图随框同步放大; 简介/标签恒高两行。
+"""议题 #144/#152/#154 回归: 最大化时封面/缩略图随框同步放大; 信息区滚动。
 
 三态纪律(MEMORY #110/#117): fresh 小窗 → 拉大 → 还原小窗, 断言
 1) 封面 pixmap 显示尺寸跟随 label 框几何(等比、随窗口变大变小), 且切换封面
    后不得再把已放大的框砸回设计尺寸(旧 resize(156,220) 硬编码回归);
-2) 简介/标签行高恒定 40px、最多两行(#154 撤销 #152 的行高增长): 宽度越大
-   每行容纳越多、省略文本越长, 下划线贴行底, 后续行只随封面增高量下移,
-   末行不得被推出页底;
+2) 简介 wordWrap 完整显示(动态高度), 标签行高恒定 40px、最多两行省略;
+   简介增高后其下各行整体下移, 装不下由滚动容器承接;
 3) 还原后与小窗 fresh 状态完全一致(双向幂等)。
 """
 
@@ -122,7 +121,7 @@ def _two_line_height(label) -> int:
 
 
 def test_info_rows_fixed_height_and_elide_by_width(win):
-    """议题 #154: 简介/标签恒 40px、最多两行; 宽度越大显示越多; 末行不出页底。"""
+    """简介完整换行; 标签恒 40px 两行省略; 其下各行随简介增高下移, 由滚动承接。"""
     ui = win.Ui
     long_outline = "2017年6月23日发售作品 Prestige专属女优「水稀美里」与AV鬼才导演 " * 20
     long_tag = ", ".join(f"标签{i}" for i in range(80))
@@ -131,41 +130,40 @@ def test_info_rows_fixed_height_and_elide_by_width(win):
 
     win.resize(1030, 700)
     win._sync_page_layouts()
-    assert ui.label_outline.height() == 40, "简介行高必须恒定 40"
+    assert ui.label_outline.parent().objectName() == "_info_scroll_inner"
+    assert ui.label_outline.text() == long_outline, "简介须完整显示、不再两行省略"
+    assert ui.label_outline.height() > 40, "超长简介须按 wordWrap 增高"
     assert ui.label_tag.height() == 40, "标签行高必须恒定 40"
     small_w = ui.label_outline.width()
-    small_len = len(ui.label_outline.text())
-    assert ui.label_outline.text().endswith("…"), "超长简介必须省略"
+    small_h = ui.label_outline.height()
     assert ui.label_tag.text().endswith("…"), "超长标签必须省略"
     from PyQt6.QtCore import QRect, Qt
 
-    for label in (ui.label_outline, ui.label_tag):
-        h = (
-            label.fontMetrics()
-            .boundingRect(QRect(0, 0, label.width(), 1_000_000), int(Qt.TextFlag.TextWordWrap), label.text())
-            .height()
-        )
-        assert h <= _two_line_height(label), f"省略后不得超两行: h={h}"
+    tag_h = (
+        ui.label_tag.fontMetrics()
+        .boundingRect(QRect(0, 0, ui.label_tag.width(), 1_000_000), int(Qt.TextFlag.TextWordWrap), ui.label_tag.text())
+        .height()
+    )
+    assert tag_h <= _two_line_height(ui.label_tag), f"标签省略后不得超两行: h={tag_h}"
 
     win.resize(1700, 1100)
     win._sync_page_layouts()
-    assert ui.label_outline.height() == 40, "放大不得增高行高"
-    assert ui.label_tag.height() == 40, "放大不得增高行高"
+    assert ui.label_outline.text() == long_outline, "放大后简介仍须完整"
+    assert ui.label_tag.height() == 40, "放大不得增高标签行高"
     assert ui.label_outline.width() > small_w, "简介宽度应随缩略图右缘增大"
-    assert len(ui.label_outline.text()) >= small_len, "宽度越大, 简介显示内容不更少"
-    # 下划线贴行底(设计偏移 30)、标签行距 20、后续行只随 info_delta 下移
-    assert ui.line_6.y() - ui.label_outline.y() == 30
+    # 下划线贴简介行底(设计偏移 30)、标签行距 20、后续行随简介增高下移
+    assert ui.line_6.y() == ui.label_outline.height() - 10
     assert ui.label_tag.y() - ui.line_6.y() == 20
     assert ui.line_7.y() - ui.label_tag.y() == 30
     assert ui.label_release.y() - ui.line_7.y() >= 20
     assert ui.label_outline.y() <= ui.line_6.y() < ui.label_tag.y() < ui.line_7.y() <= ui.label_release.y()
-    # #152 教训: 不许把末行推出页底
+    inner = ui.label_outline.parent()
     last_row = ui.label_studio
-    assert last_row.y() + last_row.height() <= ui.page_main.height(), "末行不得被推出页底"
+    assert last_row.y() + last_row.height() <= inner.height(), "末行须落在滚动内容高度内"
 
     win.resize(1030, 700)
     win._sync_page_layouts()
-    assert ui.label_outline.height() == ui.label_tag.height() == 40, "还原必须回到设计行高(双向幂等)"
+    assert ui.label_outline.height() == small_h, "还原必须回到小窗简介高度(双向幂等)"
     assert ui.label_outline.width() == small_w, "还原宽度必须与 fresh 小窗一致"
 
 

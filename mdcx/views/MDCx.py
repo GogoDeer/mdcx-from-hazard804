@@ -12890,7 +12890,7 @@ class Ui_MDCx(object):
         self.label_37.setText(
             _translate(
                 "MDCx",
-                "<p>将按 下方「Emby视频标题」、「设置」-「翻译」、<br>「设置」-「NFO」等的设置项，利用本地 nfo 更新 nfo 信息</p>",
+                "<p>将按「设置→命名」的「Emby视频标题」、<br>「设置→翻译」「设置→NFO」等的设置项，利用本地 nfo 更新 nfo 信息</p>",
             )
         )
         self.checkBox_read_download_file_again.setText(_translate("MDCx", "重新下载图片等文件（nfo 需有链接）"))

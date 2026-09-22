@@ -330,13 +330,15 @@ def test_maximize_content_follow_all_pages(win, app):
     assert win.Ui.label_file_path.width() == pytest.approx(win.Ui.page_main.width() - 34, abs=6), (
         f"软件界面文件路径标签未拉伸: {win.Ui.label_file_path.width()}"
     )
-    # 议题 #173: 结果树宽随 cover_scale 拉伸贴向缩略图右缘, 最大化时左缘到缩略图右缘
-    # 的 gap 应收窄(不再像固定 202 宽那样离缩略图 280px), 右缘仍贴页面右 18px。
+    # 议题 #173: 结果树宽随 cover_scale 拉伸贴向缩略图右缘, 右缘仍贴页面右 18px。
+    # 2026-09-22「左右双平衡」后缩略图右缘即统一右界 info_right（不再是 580×scale），
+    # 树左缘与缩略图实际右缘的 gap 恒为 13。
     tree = win.Ui.treeWidget_number
-    cover_scale = win.Ui.page_main.width() / 820
-    thumb_right = int(580 * cover_scale)
-    tree_gap_l = tree.x() - thumb_right
-    assert tree_gap_l <= 80, f"结果树左缘到缩略图右缘 gap 未收窄: {tree_gap_l}px"
+    from tests.conftest import main_page_geometry
+
+    geo = main_page_geometry(win.Ui)
+    tree_gap_l = tree.x() - geo["info_right"]
+    assert tree_gap_l == pytest.approx(13, abs=2), f"结果树左缘到缩略图右缘 gap 未收窄: {tree_gap_l}px"
     # 工具/设置页为休眠页：容器几何即时跟随即可（content 拉伸在切页 show 时验证，
     # 见 test_switch_to_pages_after_maximize_content_visible）
     assert tool_scroll.width() == pytest.approx(win.Ui.page_tool.width() - 40, abs=4), (
@@ -465,24 +467,24 @@ def test_probe_main_tool_content(win, app):
     assert after_edit > before_edit + 200, f"工具页输入框未随视口拉宽: {before_edit} -> {after_edit}"
 
     # 软件界面：#135 信息区保持设计左列（与「番号/标题/封面」对齐），按封面增高下移；
-    # #141 下划线/值列按 ×scale 等比例加长，右列下划线延伸到缩略图右缘。
-    cover_scale = win.Ui.page_main.width() / 820
-    cover_bottom = int(160 + 220 * cover_scale)
-    info_delta = cover_bottom - 380
-    thumb_right = int(580 * cover_scale)
+    # #141 下划线/值列等比例加长，右缘贴统一右界（几何镜像公式见 conftest.main_page_geometry）
+    from tests.conftest import main_page_geometry
+
+    geo = main_page_geometry(win.Ui)
+    cover_scale = geo["scale"]
+    info_right = geo["info_right"]
     tree_x = win.Ui.treeWidget_number.x()
-    info_right = max(tree_x - 13, thumb_right)
-    assert win.Ui.label_outline.x() == 70, "简介左缘应保持设计 x=70（与左上角对齐）"
-    assert win.Ui.label_outline.x() + win.Ui.label_outline.width() == info_right, (
+    assert win.Ui.label_outline.x() == 40, "简介左缘应为容器内 x=40（页面 70）"
+    # 容器内简介/下划线右缘 = info_right - 容器x30 - 滚动条24
+    assert win.Ui.label_outline.x() + win.Ui.label_outline.width() == info_right - 54, (
         "简介下划线右缘应延伸到统一右界 info_right"
     )
-    assert win.Ui.label_series.x() == int(350 * cover_scale), "右列应随 ×scale 右移"
-    assert win.Ui.label_series.x() + win.Ui.label_series.width() == info_right, (
-        "右列下划线右缘应延伸到统一右界 info_right"
+    assert win.Ui.label_series.x() == int(350 * cover_scale) - 30, "右列应随 ×scale 右移（容器内坐标）"
+    assert win.Ui.label_series.x() + win.Ui.label_series.width() == info_right - 54, (
+        "右列下划线右缘应延伸到容器内统一右界"
     )
-    # 信息区首行下移到封面框下方（不被放大后的黑框盖住）
-    assert win.Ui.label_outline.y() == pytest.approx(430 + info_delta, abs=2), "信息区未按封面增高下移"
-    assert win.Ui.label_outline.y() >= cover_bottom, "信息区首行仍在封面框内（#135 未修复）"
+    # 信息区首行在滚动容器内 y=0（页面坐标 = 容器顶，恒在封面框下方）
+    assert win.Ui.label_outline.y() == 0, "简介行应为容器内首行（y=0）"
     # 上区受右侧按钮限制的拉伸右界
     assert win.Ui.label_number.geometry().right() == pytest.approx(min(450, tree_x - 30), abs=4)
 
@@ -491,11 +493,12 @@ def test_probe_main_tool_content(win, app):
     app.processEvents()
     win.resize(1920, 1040)
     app.processEvents()
+    geo = main_page_geometry(win.Ui)
     # #135/#141 固定公式：左列 x 恒为设计值，右列 x 与下划线右缘由 ×scale 决定
-    assert win.Ui.label_series.x() == int(350 * cover_scale), "右列 x 漂移"
-    assert win.Ui.label_outline.x() == 70, "简介 x 漂移"
-    assert win.Ui.label_outline.x() + win.Ui.label_outline.width() == info_right, "简介右缘漂移"
-    assert win.Ui.label_outline.y() == pytest.approx(430 + info_delta, abs=2), "信息区 y 漂移"
+    assert win.Ui.label_series.x() == int(350 * geo["scale"]) - 30, "右列 x 漂移"
+    assert win.Ui.label_outline.x() == 40, "简介 x 漂移"
+    assert win.Ui.label_outline.x() + win.Ui.label_outline.width() == geo["info_right"] - 54, "简介右缘漂移"
+    assert win.Ui.label_outline.y() == 0, "信息区 y 漂移（容器内首行恒 0）"
     assert after_edit == max((e.width() for e in tool_page.findChildren(QLineEdit)), default=0), "工具页输入框宽漂移"
 
 
@@ -516,14 +519,14 @@ def test_runtime_row_follows_right_column_on_maximize(win, app):
     # #141：右列随 ×scale 右移（label_22=310×scale，label_runtime=350×scale），
     # 时长行 y 与日期行（y=530）一致地下移。#154 撤销 #152 的行高增长：简介/标签
     # 恒定 40px，其下各行只随封面增高量 info_delta 下移，故 info_grow == info_delta。
-    cover_scale = win.Ui.page_main.width() / 820
-    info_delta = int(160 + 220 * cover_scale) - 380
-    info_grow = info_delta
-    assert win.Ui.label_22.x() == int(310 * cover_scale), f"时长标签 x 漂移: {win.Ui.label_22.x()}"
-    assert win.Ui.label_runtime.x() == int(350 * cover_scale), f"时长值 x 漂移: {win.Ui.label_runtime.x()}"
-    assert win.Ui.label_22.y() == pytest.approx(530 + info_grow, abs=2), (
-        f"时长标签未随信息区下移: {win.Ui.label_22.y()} != {530 + info_grow}"
-    )
+    from tests.conftest import main_page_geometry
+
+    geo = main_page_geometry(win.Ui)
+    cover_scale = geo["scale"]
+    # 滚动容器化后：右列 x=×scale-30（容器内），y 固定设计值-430（无 info_delta 级联）
+    assert win.Ui.label_22.x() == int(310 * cover_scale) - 30, f"时长标签 x 漂移: {win.Ui.label_22.x()}"
+    assert win.Ui.label_runtime.x() == int(350 * cover_scale) - 30, f"时长值 x 漂移: {win.Ui.label_runtime.x()}"
+    assert win.Ui.label_22.y() == 530 - 430, f"时长标签未按容器内设计 y 固定: {win.Ui.label_22.y()}"
 
 
 def test_tool_icon_row_follows_tree_left_edge(win, app):
@@ -563,11 +566,12 @@ def test_tool_icon_row_follows_tree_left_edge(win, app):
 def test_cover_checkbox_right_and_clear_of_outline(win, app):
     """用户报告 2026-09-22：显示封面勾选框压在简介栏上且不可点。
 
-    ① x 右缘贴缩略图框右缘（thumb_right-90 等比跟随）；② y 贴封面框底
-    cover_bottom，矮窗口 info_delta 被夹时钳到 380+info_delta，绝不与简介行
-    （430+delta）及下划线（460+delta）重叠；③ .ui zorder 中勾选框在
-    label_thumb/line_6 之上（钳到框内底部时仍可点击）。
+    ① x 右缘贴统一右界 info_right；② y 贴封面框底 cover_bottom（简介行已进
+    滚动容器，不再与勾选框重叠）；③ .ui zorder 中勾选框在 label_thumb/line_6
+    之上（浮在缩略图框底部时仍可点击）。
     """
+    from tests.conftest import main_page_geometry
+
     win.resize(1040, 760)
     win.show()
     app.processEvents()
@@ -576,26 +580,21 @@ def test_cover_checkbox_right_and_clear_of_outline(win, app):
     win.resize(1280, 740)
     app.processEvents()
     ui = win.Ui
-    # cover_bottom 从封面框实际几何反推（y=160 固定），与实现公式解耦
-    cover_bottom = ui.label_poster.y() + ui.label_poster.height()
+    geo = main_page_geometry(ui)
+    cover_bottom = geo["cover_bottom"]
+    # 滚动容器化后：勾选框恒贴封面框底（y=cover_bottom，无钳制——简介行已进容器）
     assert ui.checkBox_cover.y() == cover_bottom, f"勾选框未贴封面框底: {ui.checkBox_cover.y()} != {cover_bottom}"
-    assert ui.checkBox_cover.y() + ui.checkBox_cover.height() <= ui.label_outline.y(), (
-        f"勾选框底 {ui.checkBox_cover.y() + ui.checkBox_cover.height()} 与简介行顶 {ui.label_outline.y()} 重叠"
-    )
-    assert ui.checkBox_cover.y() + ui.checkBox_cover.height() <= ui.line_6.y(), "勾选框与简介下划线重叠"
-    # 简介行顶恒在封面框底下 50px（高度约束后 info_delta 恒取封面增量侧）
-    assert ui.label_outline.y() >= cover_bottom + 50, f"简介行 {ui.label_outline.y()} 与封面框底 {cover_bottom} 重合"
-    # 场景 2：高窗口（1920x1040）→ y 贴封面框底、x 右缘贴统一右界 info_right
+    assert ui.label_outline.parent().objectName() == "_info_scroll_inner", "简介行未在滚动容器内"
+    assert ui.label_director.parent().objectName() == "_info_scroll_inner", "导演行未在滚动容器内"
+    assert geo["info_top"] >= cover_bottom, "滚动容器顶仍在封面框内"
+    # 场景 2：高窗口（1920x1040）→ x 右缘贴统一右界 info_right
     win.resize(1920, 1040)
     app.processEvents()
-    scale = ui.label_poster.height() / 220
-    thumb_right = int(580 * scale)
-    info_right = max(ui.treeWidget_number.x() - 13, thumb_right)
-    cover_bottom = ui.label_poster.y() + ui.label_poster.height()
-    assert ui.checkBox_cover.y() == cover_bottom, f"高窗口未贴封面框底: {ui.checkBox_cover.y()} != {cover_bottom}"
-    assert ui.checkBox_cover.x() + ui.checkBox_cover.width() == pytest.approx(info_right, abs=2), (
-        f"勾选框右缘未贴统一右界: {ui.checkBox_cover.x() + ui.checkBox_cover.width()} != {info_right}"
+    geo = main_page_geometry(ui)
+    assert ui.checkBox_cover.x() + ui.checkBox_cover.width() == pytest.approx(geo["info_right"], abs=2), (
+        f"勾选框右缘未贴统一右界: {ui.checkBox_cover.x() + ui.checkBox_cover.width()} != {geo['info_right']}"
     )
+    assert ui.checkBox_cover.y() == geo["cover_bottom"], "高窗口勾选框未贴封面框底"
 
 
 def test_cover_checkbox_zorder_above_thumb_and_lines():
@@ -1184,35 +1183,46 @@ def test_main_page_cover_scales_proportionally_when_maximized(win, app):
     app.processEvents()
 
     ui = win.Ui
-    # stackedWidget 可用宽 = width - 210 - 2 = 1708；scale = 1708/820
+    # stackedWidget 可用宽 = width - 210 - 2 = 1708；封面区几何用 conftest 共享镜像公式
     stacked_w = ui.stackedWidget.width()
-    scale = stacked_w / 820
     assert stacked_w == 1708, f"前置：最大化 stackedWidget 宽 {stacked_w} ≠ 1708"
 
-    assert ui.label_poster.width() == int(156 * scale), f"封面框宽未按 scale 放大: {ui.label_poster.width()}"
-    assert ui.label_poster.height() == int(220 * scale), f"封面框高未按 scale 放大: {ui.label_poster.height()}"
-    # 2026-09-22「左右双平衡」：poster 左缘跟标签列（无平移），thumb 左缘保持设计
-    # 间距、宽度自适应拉伸到统一右界 info_right（树左缘-13 与缩略图右缘取大）
-    tree_w = max(int(202 * scale), 202)
-    tree_x = max(stacked_w - tree_w - 18, 300)
-    info_right = max(tree_x - 13, int(580 * scale))
-    assert ui.label_poster.x() == int(80 * scale), f"封面框 x 应紧贴标签列: {ui.label_poster.x()}"
-    assert ui.label_poster.y() == 160, f"封面框 y 应保留设计 160: {ui.label_poster.y()}"
+    from tests.conftest import main_page_geometry
 
-    assert ui.label_thumb.height() == int(220 * scale), f"缩略框高未按 scale 放大: {ui.label_thumb.height()}"
-    assert ui.label_thumb.x() == int(252 * scale), f"缩略框 x 应保持设计间距: {ui.label_thumb.x()}"
-    assert ui.label_thumb.width() == pytest.approx(info_right - int(252 * scale), abs=1), (
+    geo = main_page_geometry(ui)
+    info_right = geo["info_right"]
+
+    # 2026-09-22 等高布局：poster/thumb 高度由宽度反推（比例各自锁定源图）
+    assert ui.label_poster.x() == geo["poster_x"], f"封面框 x 应紧贴标签列: {ui.label_poster.x()}"
+    assert ui.label_poster.y() == 160, f"封面框 y 应保留设计 160: {ui.label_poster.y()}"
+    assert ui.label_poster.width() == pytest.approx(geo["poster_w"], abs=1), (
+        f"封面框宽未按等高公式放大: {ui.label_poster.width()}"
+    )
+    assert ui.label_poster.height() == geo["cover_h"], f"封面框高未按等高公式: {ui.label_poster.height()}"
+    # poster 框比例锁定竖版 156:220（KeepAspectRatio 零变形前提）
+    ratio = ui.label_poster.width() / ui.label_poster.height()
+    assert ratio == pytest.approx(156 / 220, abs=0.01), f"封面框比例漂移: {ratio:.3f}"
+
+    # thumb 紧跟 poster、宽度自适应拉伸到统一右界 info_right，等高
+    assert ui.label_thumb.x() == geo["thumb_x"], f"缩略框 x 应紧跟 poster: {ui.label_thumb.x()}"
+    assert ui.label_thumb.width() == pytest.approx(geo["thumb_w"], abs=1), (
         f"缩略框宽度未自适应拉伸到统一右界: {ui.label_thumb.width()}"
     )
+    assert ui.label_thumb.height() == geo["cover_h"], f"缩略框高未与 poster 等高: {ui.label_thumb.height()}"
     assert ui.label_thumb.x() + ui.label_thumb.width() == pytest.approx(info_right, abs=1), (
         "缩略框右缘未贴统一右界 info_right"
     )
+    # thumb 框比例恒定 328:220（≈1.49 = DMM 横版源图比例，零裁剪）
+    thumb_ratio = ui.label_thumb.width() / ui.label_thumb.height()
+    assert thumb_ratio == pytest.approx(328 / 220, abs=0.02), f"缩略框比例漂移（会裁剪）: {thumb_ratio:.3f}"
 
-    # 尺寸文字宽度自适应（poster_size 从 poster 左缘、thumb_size 从设计 222 拉到右界）
-    assert ui.label_poster_size.width() == pytest.approx(info_right - int(80 * scale), abs=1), (
+    # 尺寸文字宽度自适应（poster_size 从 poster 左缘、thumb_size 从 thumb 左缘拉到右界）
+    assert ui.label_poster_size.x() == geo["poster_x"], "封面尺寸文字 x 未跟 poster"
+    assert ui.label_poster_size.width() == pytest.approx(info_right - geo["poster_x"], abs=1), (
         f"封面尺寸文字宽未自适应: {ui.label_poster_size.width()}"
     )
-    assert ui.label_thumb_size.width() == pytest.approx(info_right - int(222 * scale), abs=1), (
+    assert ui.label_thumb_size.x() == geo["thumb_x"], "缩略尺寸文字 x 未跟 thumb"
+    assert ui.label_thumb_size.width() == pytest.approx(info_right - geo["thumb_x"], abs=1), (
         f"缩略尺寸文字宽未自适应: {ui.label_thumb_size.width()}"
     )
 

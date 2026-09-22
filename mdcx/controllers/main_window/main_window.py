@@ -24,10 +24,12 @@ from PyQt6.QtWidgets import (
     QMenu,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QSystemTrayIcon,
     QTableWidgetItem,
     QTreeWidgetItem,
     QVBoxLayout,
+    QWidget,
 )
 
 from mdcx.base.file import (
@@ -785,6 +787,78 @@ class MyMAinWindow(QMainWindow):
         if scroll is not None:
             scroll.setGeometry(9, 29, max(nfo_w - 9 - margin, 200), max(nfo_h - 29 - bar_h, 200))
 
+    _INFO_SCROLL_WIDGET = "_info_scroll_inner"
+    # 信息区 24 控件（简介~发行）。漏一项就会停在 page_main、被封面区盖住
+    # （2026-09-22 漏 label_director 实证）。改清单须与 .ui page_main 信息区对账。
+    _INFO_SCROLL_WIDGETS = (
+        "label_18",
+        "label_33",
+        "label_outline",
+        "line_6",
+        "label_tag",
+        "line_7",
+        "label_13",
+        "label_release",
+        "line_8",
+        "label_31",
+        "label_22",
+        "label_runtime",
+        "line_9",
+        "label_23",
+        "label_director",
+        "label_series",
+        "line_10",
+        "label_24",
+        "label_publish",
+        "line_11",
+        "label_30",
+        "label_studio",
+        "line_12",
+        "line_13",
+    )
+
+    def _ensure_info_scroll_container(self, ui) -> None:
+        """信息区滚动容器：简介~发行整块 reparent 进 QScrollArea。
+
+        容器一次性构建；reparent 每次幂等补漏（已在容器内的跳过）。控件坐标由
+        _sync_page_layouts 统一重算（容器内坐标系 = 页面设计坐标平移 (30, 430)）。
+        """
+        scroll = getattr(self, "_info_scroll", None)
+        if scroll is None or scroll.parent() is None:
+            scroll = QScrollArea(ui.page_main)
+            scroll.setObjectName("_info_scroll_area")
+            scroll.setWidgetResizable(False)
+            scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+            scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+            content = QWidget(scroll)
+            content.setObjectName(self._INFO_SCROLL_WIDGET)
+            content.setStyleSheet("background: transparent;")
+            scroll.setStyleSheet("background: transparent; border: none;")
+            scroll.setWidget(content)
+            scroll.show()
+            self._info_scroll = scroll
+        inner = scroll.widget()
+        assert inner is not None
+        for name in self._INFO_SCROLL_WIDGETS:
+            w = getattr(ui, name)
+            if w.parent() is not inner:
+                w.setParent(inner)
+                w.show()
+
+    @staticmethod
+    def _cover_scale(page_w: int, page_h: int) -> float:
+        """封面区缩放系数：宽度约束与高度约束取小（测试与实现同源，防公式漂移）。
+
+        - 宽度：page_w/820（设计基准宽 820）。
+        - 高度：信息区改滚动容器后（2026-09-22），页面只需保证滚动区最小可视高
+          120 + 尺寸文字行 40×s + 顶 160，即封面等高 h ≤ page_h-280；等高 h 由
+          宽度反推（_sync_page_layouts），此处高度约束按 poster 设计高 282×s 对
+          h 封顶：s ≤ (page_h-280)/282。
+        - 下限 0.5 防御极矮窗口把 scale 压成非正数。
+        """
+        return max(min(page_w / 820, (page_h - 280) / 282), 0.5)
+
     def _sync_page_layouts(self) -> None:
         """让所有页面的内部组件跟随主窗口尺寸缩放。
 
@@ -818,13 +892,8 @@ class MyMAinWindow(QMainWindow):
         main_page = ui.page_main
         main_w = main_page.width()
         # 幂等：基于设计基准 820 的 cover_scale（全函数共用，须在统计栏/封面段前计算）。
-        # 高度约束（2026-09-22 用户反馈）：宽而矮的窗口下封面按宽放大后，信息区下移量
-        # info_delta 被「防末行出页」钳住，简介/标签行与封面框下缘重叠——cover_scale
-        # 同时受高度约束：页面高须容纳「信息区底行 660+行高 40 ≈ 700」+封面增高量
-        # int(220*(s-1))，即 s ≤ (page_h-700)/220+1。与宽度约束取 min 后，info_delta
-        # 恒取封面增量一侧，简介行顶恒在封面框底下 50px；矮窗口封面自动少放大，
-        # 底行不溢出、信息区不重叠。下限 0.5 防御极矮窗口把 scale 压成非正数。
-        cover_scale = max(min(main_w / 820, (main_page.height() - 700) / 220 + 1), 0.5)
+        # 公式收口在 _cover_scale 静态方法（测试与实现同源，防公式漂移）。
+        cover_scale = self._cover_scale(main_w, main_page.height())
         # 宽幅拉伸（设计右缘≈页面右缘）：文件路径标签、分隔线
         ui.label_file_path.resize(max(main_w - 34, 300), ui.label_file_path.height())
         ui.line_14.resize(max(main_w - 49, 300), ui.line_14.height())
@@ -839,68 +908,81 @@ class MyMAinWindow(QMainWindow):
         # 选择目录按钮跟随开始按钮左移，保持 14px 视觉间距（设计 666 与 680 之间）
         ui.pushButton_select_media_folder.move(max(ui.pushButton_start_cap.x() - 101 - 14, 20), 13)
 
-        # 左右双平衡布局（2026-09-22 用户反馈「左右都靠齐」；参照媒体服务器详情页）：
-        #   · poster 左缘紧跟「封面:」标签列（x=80×scale，不平移）——左侧紧凑无空洞；
-        #   · thumb 左缘保持设计间距（x=252×scale）、宽度自适应拉伸到统一右界
-        #     info_right——右侧与下划线/勾选框/图标排对齐；高度恒 220×scale 不变，
-        #     信息区下移量、高度约束、勾选框纵向逻辑全部不受影响；
-        #   · thumb 显示改为「等比裁剪填充」（_rescale_preview_pixmaps 中
-        #     KeepAspectRatioByExpanding），框加宽后剧照裁上下而非变形；
-        #   · poster 显示保持 KeepAspectRatio（框比例恒 156:220，等比缩放无变形）。
+        # 左右双平衡 + 等高布局（2026-09-22 用户定案「滚动方案 + 封面协调」）：
+        #   · 信息区改滚动容器后，封面高度只受「滚动区最小可视 120」约束（解放）；
+        #   · poster/thumb 等高：h = (info_right - poster_x - gap) / (156/220 + 328/220)
+        #     ——宽度反推高度，两框比例各自锁定源图（poster 0.709 竖版 / thumb 1.491
+        #     DMM 横版），零变形零裁剪、顶对齐+底对齐、中间无空洞右侧无空白；
+        #   · poster 左缘紧跟「封面:」标签列；thumb 右缘贴统一右界 info_right；
+        #   · 尺寸文字/勾选框贴封面框底（随等高 h 走）；
+        #   · poster 显示 KeepAspectRatio、thumb KeepAspectRatioByExpanding 兜底
+        #     （框比例恒等于源图比例，理论不触发裁剪）。
         thumb_right = int(580 * cover_scale)
         info_right = max(ui.treeWidget_number.x() - 13, thumb_right)
-        poster_w = int(156 * cover_scale)
-        thumb_h = int(220 * cover_scale)
-        ui.label_poster.setGeometry(int(80 * cover_scale), 160, poster_w, thumb_h)
-        ui.label_thumb.setGeometry(int(252 * cover_scale), 160, max(info_right - int(252 * cover_scale), 60), thumb_h)
+        page_h = main_page.height()
+        poster_x = int(80 * cover_scale)
+        gap = int(16 * cover_scale)
+        h_max = page_h - 160 - 120  # 封面顶 160 + 滚动区最小可视 120
+        cover_h = min(int((info_right - poster_x - gap) / (156 / 220 + 328 / 220)), h_max)
+        poster_w = int(cover_h * 156 / 220)
+        thumb_x = poster_x + poster_w + gap
+        thumb_w = max(info_right - thumb_x, 60)
+        ui.label_poster.setGeometry(poster_x, 160, poster_w, cover_h)
+        ui.label_thumb.setGeometry(thumb_x, 160, thumb_w, cover_h)
         # 议题 #144: 框放大后原图按新框尺寸重渲染(窗口缩放与图片显示同步)
         self._rescale_preview_pixmaps()
-        cover_bottom = int(160 + 220 * cover_scale)
-        # 信息区下移量 = 封面框增高量；再夹到页面可用高度内，避免宽而矮的窗口把末行裁掉
-        info_delta = min(cover_bottom - 380, max(main_page.height() - 700, 0))
-        # 议题 #154（撤销 #152 的行高增长）：简介/标签恒定 40px、最多两行，超出的文本
-        # 按当前宽度做两行省略（宽度越大每行容纳越多，最大化自然比最小化显示更多）；
-        # 下方各行只随封面增高 info_delta 下移，不再被行高增量推出页底。
-        info_grow = info_delta  # 简介/标签以下各行的总下移量
-        ui.label_poster_size.setGeometry(
-            int(80 * cover_scale), cover_bottom, max(info_right - int(80 * cover_scale), 60), int(40 * cover_scale)
+        cover_bottom = 160 + cover_h
+        # 尺寸文字贴封面框底（随封面等高公式走，不再被信息区下移量牵连——
+        # 2026-09-22 信息区改滚动容器后，info_delta 下压机制整体废弃）
+        ui.label_poster_size.setGeometry(poster_x, cover_bottom, max(info_right - poster_x, 60), int(40 * cover_scale))
+        ui.label_thumb_size.setGeometry(thumb_x, cover_bottom, max(info_right - thumb_x, 60), int(40 * cover_scale))
+        # 议题 #124：勾选框右缘贴统一右界 info_right（x = info_right - 90）；y 贴封面
+        # 框底 cover_bottom（zorder 在 label_thumb 之上，浮图时仍可点击；用户定案：
+        # 勾选框保持在封面框底部原位）
+        ui.checkBox_cover.move(info_right - 90, cover_bottom)
+        # ============ 信息区滚动容器（2026-09-22 用户定案）============
+        # 从简介行开始（含标签/日期/时长/导演/系列/制作/发行）整块放进 QScrollArea：
+        #   · 封面/缩略图等高放大后不被「信息区最小高度」挤压，内容装不下就滚动；
+        #   · 简介在容器内 wordWrap 自动换行完整显示（动态高度），#154 两行截断废弃；
+        #   · 容器 x=30（与左列标签对齐）、宽到 info_right（滚动条不压结果树）、
+        #     顶=尺寸文字行底（cover_bottom+40×scale+6）、底贴页面底。
+        #   · 容器内坐标系 = 页面设计坐标平移 (30, 容器顶设计 430)：label_18(30,430)→
+        #     容器内 (0,0)；右列 x 的 ×scale 右移逻辑保持（相对容器）。
+        #   · info_delta 下压机制删除：容器内 y 全部固定（设计值-430），无级联。
+        self._ensure_info_scroll_container(ui)
+        scroll = self._info_scroll
+        info_top = cover_bottom + int(40 * cover_scale) + 6
+        scroll.setGeometry(
+            30,
+            info_top,
+            max(info_right - 30, 60),
+            max(page_h - info_top, 120),
         )
-        ui.label_thumb_size.setGeometry(
-            int(222 * cover_scale), cover_bottom, max(info_right - int(222 * cover_scale), 60), int(40 * cover_scale)
-        )
-        # 议题 #124：勾选框右缘贴缩略图框右缘（即 info_right），x = info_right - 90；
-        # y 贴封面框底（cover_bottom），但矮窗口 info_delta 被夹小时信息区上移会与
-        # 勾选框相撞（用户报告：简介栏与勾选框重叠且勾选框被 line_6/label_thumb 盖住
-        # 不可点）——y 取 min(cover_bottom, 380+info_delta) 保底钳到信息区上方 50px
-        # 设计间隙处，绝不与简介行重叠；zorder 已把勾选框提到 label_thumb 之上。
-        ui.checkBox_cover.move(info_right - 90, min(cover_bottom, 380 + info_delta))
-        # 信息区各控件：左列标签锚定设计 x=30（与「番号/标题/封面」对齐），y 统一下移
-        # info_delta；下划线/值列按 cover_scale 等比例加长（议题 #141）：
-        #   · 简介/标签（设计 x=70、宽 500）与右列时长/系列/发行（设计 x=350）的下划线
-        #     右缘延伸到「缩略图框右缘」thumb_right = 580×scale；
-        #   · 左列窄字段（日期/导演/制作，设计宽 220）宽度按 ×scale 加长；
-        #   · 右列整体按 ×scale 右移，避免与加长后的左列窄字段重叠。
-        # 左列标签（x 固定，保持与番号/标题/封面竖向对齐）
-        # 简介/标签两行标签与其值行同顶（#154 行高恒定），其余行用 info_grow
-        ui.label_18.move(30, 430 + info_delta)
-        ui.label_33.move(30, 480 + info_delta)
+        inner = scroll.widget()
+        assert inner is not None
+        inner_w = max(int(info_right - 30) - 24, 60)  # 预留竖直滚动条宽 24
+        # 容器内坐标 = 页面设计坐标平移 (30, 430)；简介动态高度（wordWrap 完整换行）
+        wide_w = max(inner_w - 40, 60)
+        ui.label_outline.setWordWrap(True)
+        self._refresh_main_outline_tag()
+        outline_hint = ui.label_outline.heightForWidth(wide_w)
+        outline_h = max(outline_hint, 40) if outline_hint > 0 else 40
+        outline_delta = outline_h - 40
+        ui.label_outline.setGeometry(40, 0, wide_w, outline_h)
+        ui.line_6.setGeometry(40, 30 + outline_delta, wide_w, ui.line_6.height())
+        ui.label_tag.setGeometry(40, 50 + outline_delta, wide_w, 40)
+        ui.line_7.setGeometry(40, 80 + outline_delta, wide_w, ui.line_7.height())
+        # 左列标签（x=0 容器内）/窄字段值行与线（x=40 容器内 = 页面 70）
+        # y = 设计-430 + 简介增高量（简介完整换行后其下整块下移，装不下就滚）
+        ui.label_18.move(0, 0)
+        ui.label_33.move(0, 50 + outline_delta)
+        narrow_w = max(int(220 * cover_scale), 60)
         for name, y in (
             ("label_13", 530),
             ("label_23", 580),
             ("label_30", 630),
         ):
-            getattr(ui, name).move(30, y + info_grow)
-        # 简介/标签：左缘 x=70，行高恒定 40px、最多两行（#154），下划线贴行底(设计偏移 30)；
-        # 右缘与图框/图标排统一贴 info_right（用户反馈：下划线右侧留大片空白）
-        wide_w = max(info_right - 70, 60)
-        ui.label_outline.setGeometry(70, 430 + info_delta, wide_w, 40)
-        ui.line_6.setGeometry(70, 460 + info_delta, wide_w, ui.line_6.height())
-        ui.label_tag.setGeometry(70, 480 + info_delta, wide_w, 40)
-        ui.line_7.setGeometry(70, 510 + info_delta, wide_w, ui.line_7.height())
-        # 宽度变化后按新宽度重算简介/标签的两行省略文本（#154：最大化显示更多内容）
-        self._refresh_main_outline_tag()
-        # 左列窄字段（日期/导演/制作）：宽度按 ×scale 等比例加长
-        narrow_w = max(int(220 * cover_scale), 60)
+            getattr(ui, name).move(0, y - 430 + outline_delta)
         for name, y in (
             ("label_release", 530),
             ("label_director", 580),
@@ -909,17 +991,20 @@ class MyMAinWindow(QMainWindow):
             ("line_12", 610),
             ("line_13", 660),
         ):
-            getattr(ui, name).setGeometry(70, y + info_grow, narrow_w, getattr(ui, name).height())
-        # 右列（标签 x=310、值 x=350，按 ×scale 右移）：下划线右缘同样贴 info_right
-        right_label_x = int(310 * cover_scale)
-        right_value_x = int(350 * cover_scale)
-        right_line_w = max(info_right - right_value_x, 60)
+            w = getattr(ui, name)
+            w.move(40, y - 430 + outline_delta)
+            w.resize(narrow_w, w.height())
+        # 右列（标签 x=310、值 x=350，×scale 右移——容器内再减容器 x 偏移 30）
+        right_label_x = int(310 * cover_scale) - 30
+        right_value_x = int(350 * cover_scale) - 30
+        # 右列下划线宽钳到容器内容宽内（预留竖直滚动条 24px，防止伸到滚动条下被裁）
+        right_line_w = max(min(info_right - int(350 * cover_scale), inner_w - right_value_x), 60)
         for name, y in (
             ("label_31", 580),
             ("label_22", 530),
             ("label_24", 630),
         ):
-            getattr(ui, name).move(right_label_x, y + info_grow)
+            getattr(ui, name).move(right_label_x, y - 430 + outline_delta)
         for name, y in (
             ("label_series", 580),
             ("label_runtime", 530),
@@ -928,7 +1013,15 @@ class MyMAinWindow(QMainWindow):
             ("line_10", 610),
             ("line_11", 660),
         ):
-            getattr(ui, name).setGeometry(right_value_x, y + info_grow, right_line_w, getattr(ui, name).height())
+            getattr(ui, name).setGeometry(
+                right_value_x, y - 430 + outline_delta, right_line_w, getattr(ui, name).height()
+            )
+        # inner 高度按子控件包围盒（简介动态增高后 sizeHint 不可靠）
+        content_bottom = 0
+        for name in self._INFO_SCROLL_WIDGETS:
+            w = getattr(ui, name)
+            content_bottom = max(content_bottom, w.y() + w.height())
+        inner.resize(max(inner_w, 60), content_bottom + 8)
         # 上区行（y70 番号/演员、y110 标题）右界受同右行按钮限制（label_source 460 /
         # pushButton_open_nfo 427）：右界 = min(对应限制, 结果树左缘-30)
         top_right = max(min(450, ui.treeWidget_number.x() - 30), 420)
@@ -1754,11 +1847,12 @@ class MyMAinWindow(QMainWindow):
         label.setText(self._elide_label_two_lines(label, text))
 
     def _refresh_main_outline_tag(self) -> None:
-        """议题 #154：窗口宽度变化后，按新宽度重算简介/标签的两行省略文本。"""
+        """简介完整换行；标签仍按当前宽度两行省略（行高恒 40）。"""
         ui = getattr(self, "Ui", None)
         if ui is None:
             return
-        self._set_main_two_line(ui.label_outline, getattr(self, "_main_outline_text", ""))
+        outline = getattr(self, "_main_outline_text", "") or ""
+        ui.label_outline.setText(outline)
         self._set_main_two_line(ui.label_tag, getattr(self, "_main_tag_text", ""))
 
     def set_main_info(self, show_data: "ShowData | None"):
@@ -1798,7 +1892,8 @@ class MyMAinWindow(QMainWindow):
             outline = str(data.outline)
             self._main_outline_text = outline
             self.Ui.label_outline.setToolTip(outline)
-            self._set_main_two_line(self.Ui.label_outline, outline)
+            self.Ui.label_outline.setWordWrap(True)
+            self.Ui.label_outline.setText(outline)
             tag = ", ".join(str(item) for item in data.tag) if isinstance(data.tag, list) else str(data.tag)
             self._main_tag_text = tag
             self.Ui.label_tag.setToolTip(tag)
@@ -1835,6 +1930,8 @@ class MyMAinWindow(QMainWindow):
                 poster_from = data.poster_from
                 cover_from = data.thumb_from
                 self._request_preview_images(poster_path, thumb_path, poster_from, cover_from)
+            if getattr(self, "_info_scroll", None) is not None:
+                self._sync_page_layouts()
         except Exception:
             if not signal_qt.stop:
                 signal_qt.show_traceback_log(traceback.format_exc())

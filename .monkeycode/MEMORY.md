@@ -109,7 +109,8 @@
   - 主窗口全局绝对定位：长文本 QLabel 用 wordWrap 查 sizeHint；新增顶层控件纳入 resizeEvent 手动几何同步。QComboBox 装饰后缀：`addItem(icon, 文本, UserRole 纯值)`，消费点统一 `currentData()`，信号 handler 收文本须剥后缀。
   - **改布局先锁整体设计语言，别逐控件打补丁（2026-09-22 用户批评「没有大局观」实证）**：主界面信息区按「右缘对齐」逐个右移图框，破坏了「标签列-内容」左聚关系，封面框与「封面:」标签间出现大空洞——用户真实诉求是「左右都靠齐」的整体平衡（参照媒体服务器详情页：poster 左贴标签列、thumb 宽度自适应拉伸填满到右界）。布局类诉求动手前先用一句话向用户复述目标形态再改；同一区域被要求改两次即停下重新对齐。军规③「设计基准+extra」适用于锚定类控件；**填充类拉伸（框宽自适应）与平移是两种不同手段，别混用**。
   - **QLabel ScaledContents=True 的双重缩放陷阱（2026-09-22）**：`setPixmap` 后 QLabel 会把 pixmap 再拉伸到框尺寸——`_rescale_preview_pixmaps` 里 KeepAspectRatio 预渲染被覆盖，净效果=按框比例拉伸变形；框比例恒定（宽高同 ×scale）时无形变，**框比例动态变化（宽度自适应拉伸）时必须换 KeepAspectRatioByExpanding 预渲染到精确框尺寸**（等比裁剪填充，类似播放器 object-fit: cover），poster 竖版保持 KeepAspectRatio 不动。改图框宽高比前先查渲染模式。
-  - **Windows 原生边框首帧时序（2026-09-22 实证）**：首次 showEvent 应用默认尺寸后，resizeEvent 驱动的绝对定位同步在首帧可能被吞——设置页浮框等短暂错位、隔一会儿自愈（#78「原生边框 resize 错过布局更新」同族）。已在 `_apply_adaptive_default_size` 尾部 `QTimer.singleShot(0, self._sync_page_layouts)` 强制补同步（幂等），勿回退；同类「自愈型错位」优先怀疑首帧时序而非几何公式。
+  - **Windows 原生边框首帧时序（2026-09-22 实证）**：首次 showEvent 应用默认尺寸后，resizeEvent 驱动的绝对定位同步在首帧可能被吞——设置页浮框等短暂错位、隔一会儿自愈（#78「原生边框 resize 错过布局更新」同族）。已在 `_apply_adaptive_default_size` 尾部 `QTimer.singleShot(0, self._sync_page_layouts)` 强制补同步（幂等），勿回退；同类「自愈型错位」优先怀疑首帧时序而非几何公式。最小化→还原立即好的几何问题，优先对齐还原路径（`changeEvent` 补同步 + 300ms 再拍），勿只加 `singleShot(0)`。
+  - **reparent 进滚动容器（2026-09-22）**：清单必须与设计器控件一对账（漏一项就停在 page_main 被封面盖住，导演行实证）；容器构建后每次 sync 仍须幂等补漏，禁止 `if 已构建: return` 跳过补漏。动态高度 QLabel 先 `setText` 再 `heightForWidth`；`QScrollArea.setWidgetResizable(False)` 时 inner 高度用子控件包围盒，`sizeHint` 不可靠。
 
 ## 站点与网络
 

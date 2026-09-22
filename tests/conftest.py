@@ -420,6 +420,53 @@ signals_module.set_signal = lambda signal_instance: None
 sys.modules.setdefault("mdcx.signals", signals_module)
 
 
+def main_page_geometry(ui):
+    """主页面封面区几何镜像公式（2026-09-22「信息区滚动容器 + 等高封面」版）。
+
+    与 mdcx/controllers/main_window/main_window.py::_sync_page_layouts 封面段、
+    _cover_scale 同源——**改实现必须同步此处**（军规⑧：公式漂移全 tests 同步）。
+    信息区 22 控件已 reparent 进 _info_scroll 容器：容器内坐标 = 页面坐标平移
+    (30, info_top)。返回封面等高 h、poster/thumb 几何、info_right、容器几何，
+    以及 info_widgets_page() 闭包（把容器内控件坐标映射回页面坐标）。
+    """
+    from mdcx.controllers.main_window.main_window import MyMAinWindow
+
+    page_w, page_h = ui.page_main.width(), ui.page_main.height()
+    s = MyMAinWindow._cover_scale(page_w, page_h)
+    poster_x = int(80 * s)
+    tree_w = max(int(202 * s), 202)
+    tree_x = max(page_w - tree_w - 18, 300)
+    info_right = max(tree_x - 13, int(580 * s))
+    gap = int(16 * s)
+    h_max = page_h - 160 - 120
+    cover_h = min(int((info_right - poster_x - gap) / (156 / 220 + 328 / 220)), h_max)
+    poster_w = int(cover_h * 156 / 220)
+    thumb_x = poster_x + poster_w + gap
+    thumb_w = max(info_right - thumb_x, 60)
+    cover_bottom = 160 + cover_h
+    info_top = cover_bottom + int(40 * s) + 6
+
+    def page_pos(w):
+        """容器内控件 → 页面坐标（未 reparent 时原样返回）。"""
+        parent = w.parent()
+        if parent is not None and parent.objectName() == "_info_scroll_inner":
+            return parent.mapTo(ui.page_main, w.pos())
+        return w.pos()
+
+    return {
+        "scale": s,
+        "poster_x": poster_x,
+        "poster_w": poster_w,
+        "cover_h": cover_h,
+        "thumb_x": thumb_x,
+        "thumb_w": thumb_w,
+        "info_right": info_right,
+        "cover_bottom": cover_bottom,
+        "info_top": info_top,
+        "page_pos": page_pos,
+    }
+
+
 def pytest_sessionfinish(session, exitstatus):
     # Windows runner 实证：同进程构造多个 MyMAinWindow（各含 QSystemTrayIcon）
     # 时，解释器收尾阶段的 Qt C++ 对象析构会段错误——Linux 表现为 SIGSEGV(139)、
