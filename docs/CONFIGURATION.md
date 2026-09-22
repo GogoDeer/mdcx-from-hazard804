@@ -22,7 +22,7 @@
 
 | 配置项 | 作用 |
 |-------|------|
-| 媒体路径 | 放视频文件的目录 |
+| 待刮削视频目录 | 放视频文件的目录（配置字段名 `media_path`）|
 | 成功输出目录 | 刮完后把文件复制一份到另一个地方，不填就不复制 |
 | 失败输出目录 | 刮失败的文件挪到这个目录 |
 | 软链接路径 | 创建软链接的目标目录（不移动原文件） |
@@ -52,7 +52,8 @@
 |-------|------|
 | 并发数 | 同时刮多少个文件（建议 3-5）|
 | 间歇模式 | 每刮完一批停一会儿，防止被网站封 |
-| 刮削模式 | info（信息优先）/ speed（速度优先）/ single（单站快速）|
+| 工作模式 | 设置→刮削模式：正常模式 / 视频模式 / 更新模式 / 读取模式 |
+| 网站偏好 | 设置→刮削网站：字段优先 / 速度优先 / 指定网站（配置字段 `scrape_like`：info / speed / single）|
 | 读取模式 | 读取模式的 4 个子选项 |
 | 更新模式 | 更新模式的目录/文件命名模板 |
 | 文件移动 | 成功后移动/重命名，失败后移动 |
@@ -185,9 +186,9 @@
 
 | 配置项 | 作用 |
 |-------|------|
-| HTTP 代理 | 代理地址（如 http://127.0.0.1:7890）|
-| SOCKS5 代理 | SOCKS5 代理地址 |
+| 代理地址 | HTTP/HTTPS/SOCKS5 地址，协议写在 URL 里（如 `http://127.0.0.1:7890`、`socks5://127.0.0.1:1080`）|
 | 走代理网站 | 只对这些网站用代理，其他直连（默认含 `amazon.co.jp, m.media-amazon.com, xcity.jp, minnano-av.com, avbase.net, javbus.com, javdb.com, javlibrary.com, r18.dev, mgstage.com, prestige-av.com, seesaawiki.jp, avsox.click, avsox.com, avmoo.shop, avmoo.com, avheat.shop, avheat.com, heyzo.com, caribbeancom.com, 1pondo.tv, pacopacomama.com, 10musume.com, mywife.cc, github.com, raw.githubusercontent.com, google.com, missav.ws, missav.ai, missav.live, aventertainments.com, javfree.me, 7mmtv.sx, 7tv022.com`）|
+| 直连白名单 | 优先级高于「走代理网站」：命中则强制直连，其余仍按上方列表分流；默认空，旧配置行为不变 |
 | 全部走代理 | 默认关。开启后所有请求都发往上方代理地址，分流交给代理软件（Clash 等）裁决，「走代理网站」列表不再生效；会显著增加代理流量消耗（高清图为大流量来源）|
 | 外部 CF 服务 | TRAWL / FlareSolverr 风格外部 CF 服务地址（如 `http://127.0.0.1:8191`），MDCx 自动拉起协议适配层 |
 | CF 服务后端 | 外部 CF 服务类型：TRAWL（走 /scrape）或 FlareSolverr（走 /v1） |

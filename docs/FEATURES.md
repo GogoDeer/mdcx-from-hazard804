@@ -45,8 +45,8 @@ MDCx 支持的功能全景。只想快速上手的话，先看 [QUICKSTART.md](Q
 | avmoo | avmoo.shop | 有码信息站（仅能有码） |
 | aventertainments | aventertainments.com | 无码（DVD+PPV） |
 | avheat | avheat.shop | 欧美（欧美） |
-| airav_cc | airav.cc | 无码（综合：有码+无码） |
-| avsex | avsex.com | 无码（综合：有码+无码） |
+| airav_cc | airav.cc | 综合：有码+无码 |
+| avsex | avsex.com | 综合：有码+无码 |
 | fc2 | fc2.com | FC2 官网（FC2） |
 | fc2ppvdb | fc2cmadb.com | FC2 PPV 数据库（FC2） |
 | madouqu | madouqu.com | 国产（国产） |
@@ -60,7 +60,7 @@ MDCx 支持的功能全景。只想快速上手的话，先看 [QUICKSTART.md](Q
 
 > 注意：javdb_api、javdb_app、missav_api、r18dev、thejavdb_api 这五条是免 CF 直连通道，稳定性好，建议优先选用。
 
-**各爬虫适用类型**（刮削类型默认网站源，可在「设置→刮削网站」调整）：
+**各爬虫适用类型**（能力分类；各类型默认网站源可在「设置→刮削网站」调整，不必与下表一一对应。无码默认源不含 javfree、airav_cc）：
 - **仅能有码**：dmm、dmm_api、thejavdb_api、libredmm、r18dev、avbase、xcity、prestige、mgstage、getchu、javlibrary、freejavbt、lulubar、avmoo
 - **无码专属**：aventertainments、avsox
 - **综合（有码+无码）**：javbus、javdb、javdb_api、javdb_app、missav、missav_api、javday、javfree、airav_cc、avsex、official、iqqtv、7mmtv
@@ -127,7 +127,7 @@ MDCx 支持的功能全景。只想快速上手的话，先看 [QUICKSTART.md](Q
 - **媒体**：海报 URL、缩略图 URL、背景图 URL、预告片 URL
 - **外部 ID**：各网站 ID（javdbid、javlibraryid 等）
 
-写入时可通过 **NFO 合并策略**控制如何处理已存在的 NFO（软件界面读取模式区域下拉框，5 选 1）：偏好刮削结果 / 偏好本地 NFO / 数组字段合并 / 保留现有 / 仅填空缺，防止重刮覆盖手动整理的内容（如手改的简介、标签）。
+写入时可通过 **NFO 合并策略**控制如何处理已存在的 NFO（软件界面读取模式区域下拉框，5 选 1）：新数据优先（覆盖）/ 本地NFO优先 / 合并数组（去重）/ 保留已有（只补新字段）/ 仅填空字段，防止重刮覆盖手动整理的内容（如手改的简介、标签）。
 
 ## 四、图片处理
 
