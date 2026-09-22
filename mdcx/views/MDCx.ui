@@ -24816,6 +24816,9 @@ p, li { white-space: pre-wrap; }
                                   <property name="styleSheet">
                                     <string notr="true">color: rgb(8, 128, 128);</string>
                                   </property>
+                                  <property name="alignment">
+                                    <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignTop</set>
+                                  </property>
                                   <property name="text">
                                     <string>用法：先在左侧 NFO 列表选中多条记录，再填写内容点对应按钮（替换演员名/加标签/删标签/统一系列名），最后点「批量保存」统一写盘生效。</string>
                                   </property>
@@ -26241,7 +26244,7 @@ p, li { white-space: pre-wrap; }
                 </rect>
               </property>
             </widget>
-            <widget class="QLineEdit" name="lineEdit_nfo_originaltitle">
+            <widget class="QTextEdit" name="textEdit_nfo_originaltitle">
               <property name="geometry">
                 <rect>
                   <x>100</x>

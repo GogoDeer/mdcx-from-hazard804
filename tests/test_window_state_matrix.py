@@ -609,18 +609,74 @@ def test_cover_checkbox_zorder_above_thumb_and_lines():
         assert cover_idx > zorders.index(later), f"checkBox_cover 应在 {later} 之后（上层）"
 
 
-def test_nfo_lib_batch_hint_min_height_fits_three_lines():
-    """用户报告 2026-09-22：批量保存按钮下用法说明 3 行文字被裁。
+def test_result_tree_height_follows_page_height(win, app):
+    """用户报告 2026-09-22：结果树底与窗缘间大片空白。
 
-    文案加长后 64px 装不下三行，.ui minimumSize 高度须 ≥88。
+    树高此前停在设计值 563（设计页高 692 = 树顶 110 + 563 + 底余 19），
+    窗口拉高后底部空 219px。现树高 = 页高 - 110 - 19，双向幂等。
     """
-    import xml.etree.ElementTree as ET
+    win.resize(1040, 760)
+    win.show()
+    app.processEvents()
+    win.resize(1280, 900)
+    app.processEvents()
 
-    root = ET.parse("mdcx/views/MDCx.ui").getroot()
-    label = root.find(".//widget[@name='label_nfo_lib_batch_hint']")
-    assert label is not None
-    height = label.find("property[@name='minimumSize']/size/height")
-    assert height is not None and int(height.text) >= 88
+    ui = win.Ui
+    page_h = ui.page_main.height()
+    tree = ui.treeWidget_number
+    assert tree.y() == 110
+    assert tree.height() == page_h - 110 - 19, f"树高未跟随页高: {tree.height()} != {page_h - 129}"
+    assert page_h - (tree.y() + tree.height()) == 19, "树底应保留设计 19px 底余"
+
+    # 缩回再放大：幂等
+    win.resize(1040, 760)
+    app.processEvents()
+    small_h = ui.treeWidget_number.height()
+    win.resize(1280, 900)
+    app.processEvents()
+    assert ui.treeWidget_number.height() == page_h - 129
+    assert small_h < ui.treeWidget_number.height(), "缩放后树高应变化（幂等性前置）"
+
+
+def test_nfo_lib_batch_hint_fits_wrapped_lines(win, app):
+    """用户报告 2026-09-22：批量保存按钮下用法说明被裁 + 按钮与文字间空白。
+
+    根因：hint 高度写死 88、文字垂直居中——窄窗口/DPI 放大时 4 行文字超出
+    被裁，行数少时上下留大片空白。现 .ui 顶对齐 + _sync_nfo_lib_form_fields
+    按 heightForWidth 贴合（88 保底）。
+    """
+    from PyQt6.QtCore import QRect, Qt
+
+    win.resize(1040, 760)
+    win.show()
+    app.processEvents()
+    win.Ui.stackedWidget.setCurrentIndex(6)
+    app.processEvents()
+    ui = win.Ui
+    ui.groupBox_nfo_lib_batch.setChecked(True)
+    win._sync_nfo_lib_form_fields()
+    app.processEvents()
+
+    hint = ui.label_nfo_lib_batch_hint
+    assert hint.alignment() & Qt.AlignmentFlag.AlignTop, "hint 应顶部对齐（消除按钮与文字间空白）"
+
+    # 长文本：高度须 >= 换行所需
+    long_text = hint.text() * 3
+    hint.setText(long_text)
+    win._sync_nfo_lib_form_fields()
+    app.processEvents()
+    need = (
+        hint.fontMetrics()
+        .boundingRect(QRect(0, 0, hint.width(), 10_000_000), int(Qt.TextFlag.TextWordWrap), long_text)
+        .height()
+    )
+    assert hint.height() >= need, f"hint 高度 {hint.height()} < 换行所需 {need}，文字会被裁"
+
+    # 还原短文本：回落到下限 88
+    hint.setText("用法说明")
+    win._sync_nfo_lib_form_fields()
+    app.processEvents()
+    assert hint.height() == 88, f"短文本应回落到下限 88: {hint.height()}"
 
 
 def test_switch_to_pages_after_maximize_content_visible(win, app):

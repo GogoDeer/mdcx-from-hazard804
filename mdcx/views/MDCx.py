@@ -11847,6 +11847,9 @@ class Ui_MDCx(object):
         self.label_nfo_lib_batch_hint = QtWidgets.QLabel(parent=self.groupBox_nfo_lib_batch)
         self.label_nfo_lib_batch_hint.setMinimumSize(QtCore.QSize(0, 88))
         self.label_nfo_lib_batch_hint.setStyleSheet("color: rgb(8, 128, 128);")
+        self.label_nfo_lib_batch_hint.setAlignment(
+            QtCore.Qt.AlignmentFlag.AlignLeading | QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignTop
+        )
         self.label_nfo_lib_batch_hint.setWordWrap(True)
         self.label_nfo_lib_batch_hint.setObjectName("label_nfo_lib_batch_hint")
         self.gridLayout_nfo_lib_batch.addWidget(self.label_nfo_lib_batch_hint, 6, 0, 1, 2)
@@ -12452,9 +12455,9 @@ class Ui_MDCx(object):
         self.lineEdit_nfo_title = QtWidgets.QLineEdit(parent=self.scrollAreaWidgetContents_nfo_editor)
         self.lineEdit_nfo_title.setGeometry(QtCore.QRect(100, 220, 621, 40))
         self.lineEdit_nfo_title.setObjectName("lineEdit_nfo_title")
-        self.lineEdit_nfo_originaltitle = QtWidgets.QLineEdit(parent=self.scrollAreaWidgetContents_nfo_editor)
-        self.lineEdit_nfo_originaltitle.setGeometry(QtCore.QRect(100, 270, 621, 40))
-        self.lineEdit_nfo_originaltitle.setObjectName("lineEdit_nfo_originaltitle")
+        self.textEdit_nfo_originaltitle = QtWidgets.QTextEdit(parent=self.scrollAreaWidgetContents_nfo_editor)
+        self.textEdit_nfo_originaltitle.setGeometry(QtCore.QRect(100, 270, 621, 40))
+        self.textEdit_nfo_originaltitle.setObjectName("textEdit_nfo_originaltitle")
         self.textEdit_nfo_outline = QtWidgets.QTextEdit(parent=self.scrollAreaWidgetContents_nfo_editor)
         self.textEdit_nfo_outline.setGeometry(QtCore.QRect(100, 330, 621, 151))
         self.textEdit_nfo_outline.setObjectName("textEdit_nfo_outline")

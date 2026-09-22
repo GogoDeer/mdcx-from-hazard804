@@ -250,3 +250,96 @@ def test_page_change_dirty_save_proceeds(win, monkeypatch):
     ui.stackedWidget.setCurrentIndex(1)
     assert ui.stackedWidget.currentIndex() == 1, "选保存后切页未被执行"
     assert ui.widget_nfo.isHidden(), "选保存切页后面板应暂隐"
+
+
+_AUTO_FIT_BOXES = (
+    "textEdit_nfo_outline",
+    "textEdit_nfo_originalplot",
+    "textEdit_nfo_tag",
+    "textEdit_nfo_originaltitle",
+)
+
+
+def test_overlay_multiline_boxes_fit_content(win):
+    """四个多行框（简介/原简介/标签/原标题）高度跟随内容、完整换行不内部滚动。
+
+    原标题原为单行 QLineEdit，长标题看不全；现统一 QTextEdit + 文档高度自适应：
+    短内容保持设计下限，长内容按文档行数增高；textChanged 即时重算；
+    换行由 WordWrap 接管，横向滚动条关闭。
+    """
+    from PyQt6.QtGui import QTextOption
+
+    ui = win.Ui
+    _open_overlay(win)
+    boxes = [getattr(ui, name) for name in _AUTO_FIT_BOXES]
+    for box in boxes:
+        assert box.wordWrapMode() == QTextOption.WrapMode.WordWrap, f"{box.objectName()} 未开自动换行"
+        assert box.horizontalScrollBarPolicy().name == "ScrollBarAlwaysOff", f"{box.objectName()} 横向滚动条未关"
+
+    # 短内容 → 设计下限
+    ui.textEdit_nfo_outline.setPlainText("短简介")
+    ui.textEdit_nfo_originaltitle.setPlainText("短原标题")
+    win._sync_nfo_editor_text_heights()
+    assert ui.textEdit_nfo_outline.height() == win._NFO_EDITOR_TEXT_MIN_H
+    assert ui.textEdit_nfo_originaltitle.height() == win._NFO_EDITOR_TITLE_MIN_H
+
+    # 长内容 → 高度显著增长，且不低于文档高度
+    long_text = "一行很长的内容用于撑高多行文本框 " * 40
+    ui.textEdit_nfo_outline.setPlainText(long_text)
+    ui.textEdit_nfo_originaltitle.setPlainText(long_text)
+    assert ui.textEdit_nfo_outline.height() > win._NFO_EDITOR_TEXT_MIN_H, "长简介未自动增高"
+    assert ui.textEdit_nfo_originaltitle.height() > win._NFO_EDITOR_TITLE_MIN_H, "长原标题未自动增高"
+    for box in boxes:
+        doc_h = int(box.document().documentLayout().documentSize().height()) + 8
+        assert box.height() >= min(doc_h, win._NFO_EDITOR_TEXT_MIN_H), f"{box.objectName()} 高度小于文档高度"
+
+    # 还原短内容 → 高度回落（min 只增不减的自适应语义：回落到原下限）
+    ui.textEdit_nfo_outline.setPlainText("短简介")
+    ui.textEdit_nfo_originaltitle.setPlainText("短原标题")
+    assert ui.textEdit_nfo_outline.height() == win._NFO_EDITOR_TEXT_MIN_H
+    assert ui.textEdit_nfo_originaltitle.height() == win._NFO_EDITOR_TITLE_MIN_H
+
+
+def test_overlay_text_heights_recalc_on_widen(win):
+    """面板拉宽后文档重排、行数减少，高度重算由 _sync_nfo_overlay_geometry 触发。"""
+    ui = win.Ui
+    _open_overlay(win)
+    win.resize(900, 700)
+    win._sync_nfo_overlay_geometry()
+    ui.textEdit_nfo_outline.setPlainText("很长的简介内容 " * 60)
+    narrow_h = ui.textEdit_nfo_outline.height()
+    assert narrow_h > win._NFO_EDITOR_TEXT_MIN_H, "前置失败：窄面板下长简介应增高"
+
+    win.resize(1920, 1080)
+    win._sync_nfo_overlay_geometry()
+    wide_h = ui.textEdit_nfo_outline.height()
+    assert wide_h < narrow_h, f"拉宽后行数减少高度应回落: {narrow_h} -> {wide_h}"
+
+
+def test_show_and_save_nfo_info_roundtrip_with_originaltitle(win, tmp_path, monkeypatch):
+    """载入/保存链路换 toPlainText 后原标题往返一致（含换行内容）。
+
+    write_nfo 走磁盘 IO（fixture 窗口 file_path 为空会写失败），打桩只验证
+    表单↔json_data 的取值链路（text()/toPlainText()）。
+    """
+    from mdcx.controllers.main_window import main_window as mw_mod
+
+    ui = win.Ui
+    _add_result(win, "1-3.ABP-600", "ABP-600", "标题600")
+    entry = win.json_array["1-3.ABP-600"]
+    # save_nfo_info 开头按 file_path 算 nfo 路径（空路径会炸），给真实文件
+    entry.file_info.file_path = tmp_path / "1-3.ABP-600.mp4"
+    entry.file_info.file_path.touch()
+    entry.data.originaltitle = "オリジナル\n第二行标题"
+    entry.data.outline = "剧情简介\n第二行"
+
+    win.show_name = "1-3.ABP-600"
+    win._show_nfo_info()
+    assert ui.textEdit_nfo_originaltitle.toPlainText() == "オリジナル\n第二行标题"
+    assert ui.textEdit_nfo_outline.toPlainText() == "剧情简介\n第二行"
+
+    ui.textEdit_nfo_originaltitle.setPlainText("改后的\n原标题")
+    monkeypatch.setattr(mw_mod, "write_nfo", lambda *a, **k: None)
+    monkeypatch.setattr(mw_mod.executor, "run", lambda _coro: True)
+    win.save_nfo_info()
+    assert entry.data.originaltitle == "改后的\n原标题"

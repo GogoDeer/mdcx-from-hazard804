@@ -12,7 +12,17 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal, cast
 
 from PyQt6.QtCore import QEvent, QItemSelectionModel, QPoint, QPointF, QRect, Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import QAction, QCursor, QGuiApplication, QHoverEvent, QIcon, QKeySequence, QPixmap, QShortcut
+from PyQt6.QtGui import (
+    QAction,
+    QCursor,
+    QGuiApplication,
+    QHoverEvent,
+    QIcon,
+    QKeySequence,
+    QPixmap,
+    QShortcut,
+    QTextOption,
+)
 from PyQt6.QtWidgets import (
     QApplication,
     QFileDialog,
@@ -614,6 +624,14 @@ class MyMAinWindow(QMainWindow):
             if shrink > 0:
                 apply_box_height(full - shrink)
         scroll.sync_content_min_height()
+        # 批量保存用法说明高度贴合换行行数（2026-09-22 用户报告：文字被裁 +
+        # 按钮与文字间空白）。.ui 写死 88 与实际行数脱钩——窄窗口/DPI 放大时
+        # 文字 4 行超出被裁、行数少时垂直居中留空白。改 AlignTop + 按当前宽度
+        # heightForWidth 现算（下限 88 由 .ui minimumSize 保底）。
+        hint = ui.label_nfo_lib_batch_hint
+        hint_h = hint.heightForWidth(hint.width())
+        if hint_h > 0:
+            hint.setMinimumHeight(max(hint_h, 88))
 
     def resizeEvent(self, a0):
         # 全局 UI 为绝对定位布局（上游遗留），centralwidget 无布局管理器，
@@ -639,9 +657,10 @@ class MyMAinWindow(QMainWindow):
         ui.progressBar_scrape.setGeometry(209, -1, max(width - 211, 100), 7)
         self._sync_page_layouts()  # 同步动态页面的内部尺寸
 
-    # 议题 #154：「编辑 NFO」覆盖层内容区字段最小高度（设计值）
+    # 议题 #154：「编辑 NFO」覆盖层内容区多行框最小高度（设计值；自适应后仍作下限）
     _NFO_EDITOR_TEXT_MIN_H = 150
     _NFO_EDITOR_TAG_MIN_H = 100
+    _NFO_EDITOR_TITLE_MIN_H = 40
     _NFO_COMMA_HINT = "多个以逗号隔开"
     _NFO_OVERLAY_X = 215
     _NFO_OVERLAY_Y = 8
@@ -714,7 +733,7 @@ class MyMAinWindow(QMainWindow):
         )
         add_full_row(ui.label_359, ui.lineEdit_nfo_actor)
         add_full_row(ui.label_361, ui.lineEdit_nfo_title)
-        add_full_row(ui.label_372, ui.lineEdit_nfo_originaltitle)
+        add_full_row(ui.label_372, ui.textEdit_nfo_originaltitle)
         add_full_row(ui.label_19, ui.textEdit_nfo_outline)
         add_full_row(ui.label_371, ui.textEdit_nfo_originalplot)
         add_full_row(ui.label_362, ui.textEdit_nfo_tag)
@@ -726,12 +745,61 @@ class MyMAinWindow(QMainWindow):
         add_full_row(ui.label_376, ui.lineEdit_nfo_cover)
         add_full_row(ui.label_377, ui.lineEdit_nfo_trailer)
         add_full_row(ui.label_378, ui.lineEdit_nfo_website)
-        for box, height in (
+        auto_boxes = (
             (ui.textEdit_nfo_outline, self._NFO_EDITOR_TEXT_MIN_H),
             (ui.textEdit_nfo_originalplot, self._NFO_EDITOR_TEXT_MIN_H),
             (ui.textEdit_nfo_tag, self._NFO_EDITOR_TAG_MIN_H),
-        ):
+            (ui.textEdit_nfo_originaltitle, self._NFO_EDITOR_TITLE_MIN_H),
+        )
+        for box, height in auto_boxes:
             box.setMinimumHeight(height)
+            box.setMaximumHeight(height)
+            box.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            box.setWordWrapMode(QTextOption.WrapMode.WordWrap)
+            box.textChanged.connect(self._sync_nfo_editor_text_heights)
+        self._nfo_editor_box_floors = dict(auto_boxes)
+
+    def _nfo_editor_fit_height(self, box, floor: int) -> int:
+        """按当前宽度与文本用字体度量计算贴合高度。
+
+        QTextDocumentLayout 的重排是异步的（resize 后 documentSize() 返回陈旧
+        值），高度必须用 QFontMetrics.boundingRect 按 TextWordWrap 现算。
+        """
+        text = box.toPlainText()
+        if not text:
+            return floor
+        margin = int(box.document().documentMargin())
+        avail = max(box.width() - 2 * box.frameWidth() - 2 * margin - 2, 60)
+        rect = box.fontMetrics().boundingRect(QRect(0, 0, avail, 10_000_000), int(Qt.TextFlag.TextWordWrap), text)
+        return max(rect.height() + 2 * margin + 8, floor)
+
+    def _recalc_nfo_editor_box_heights(self) -> bool:
+        """四框 min/max 同钉到贴合高度（QTextEdit 垂直 Expanding 会吃掉富余空间）。"""
+        floors = getattr(self, "_nfo_editor_box_floors", {})
+        changed = False
+        for box, floor in floors.items():
+            h = self._nfo_editor_fit_height(box, floor)
+            if box.minimumHeight() != h or box.maximumHeight() != h:
+                box.setMinimumHeight(h)
+                box.setMaximumHeight(h)
+                changed = True
+        return changed
+
+    def _sync_nfo_editor_text_heights(self) -> None:
+        """textChanged 槽：先激活布局让宽度到位，再按新宽度重算四框高度。"""
+        ui = getattr(self, "Ui", None)
+        if ui is None:
+            return
+        content = ui.scrollAreaWidgetContents_nfo_editor
+        lay = content.layout()
+        if lay is not None:
+            lay.activate()
+        changed = self._recalc_nfo_editor_box_heights()
+        if changed and lay is not None:
+            lay.invalidate()
+            lay.activate()
+        if changed and not ui.widget_nfo.isHidden():
+            self._sync_nfo_overlay_geometry()
 
     def _nfo_overlay_right_edge(self) -> int:
         """覆盖层右缘 = min(缩略图右缘, 结果树左缘 - 间距)，不盖住番号树。"""
@@ -761,6 +829,10 @@ class MyMAinWindow(QMainWindow):
         lay = content.layout()
         if lay is not None:
             lay.activate()
+            # 面板宽度变化后文档重排（行数变少/变多），先按新宽度重算四框高度
+            if self._recalc_nfo_editor_box_heights():
+                lay.invalidate()
+                lay.activate()
             content_h = max(lay.sizeHint().height(), 200)
         else:
             content_h = 200
@@ -786,6 +858,31 @@ class MyMAinWindow(QMainWindow):
         scroll = ui.scrollArea_nfo
         if scroll is not None:
             scroll.setGeometry(9, 29, max(nfo_w - 9 - margin, 200), max(nfo_h - 29 - bar_h, 200))
+            lay = content.layout()
+            if lay is not None:
+                # scroll/content 新宽度已落地：按新宽度重排四框高度（行数可能变化），
+                # 内容总高变化时再收一遍面板高，避免尾行被按钮条遮住
+                lay.activate()
+                if self._recalc_nfo_editor_box_heights():
+                    lay.invalidate()
+                    lay.activate()
+                    content_h2 = max(lay.sizeHint().height(), 200)
+                    nfo_h2 = min(29 + content_h2 + self._NFO_OVERLAY_BAR_H, max_h)
+                    if nfo_h2 != nfo_h:
+                        nfo.setGeometry(nfo_x, nfo_y, nfo_w, nfo_h2)
+                        scroll.setGeometry(
+                            9, 29, max(nfo_w - 9 - margin, 200), max(nfo_h2 - 29 - self._NFO_OVERLAY_BAR_H, 200)
+                        )
+                        btn_y = max(nfo_h2 - margin - self._NFO_OVERLAY_BTN_H, 0)
+                        ui.pushButton_nfo_close.setGeometry(
+                            close_x, btn_y, self._NFO_OVERLAY_BTN_W, self._NFO_OVERLAY_BTN_H
+                        )
+                        ui.pushButton_nfo_save.setGeometry(
+                            save_x, btn_y, self._NFO_OVERLAY_BTN_W, self._NFO_OVERLAY_BTN_H
+                        )
+                        ui.label_save_tips.setGeometry(
+                            margin, max(nfo_h2 - margin - 24, 0), max(save_x - margin, 60), 20
+                        )
 
     _INFO_SCROLL_WIDGET = "_info_scroll_inner"
     # 信息区 24 控件（简介~发行）。漏一项就会停在 page_main、被封面区盖住
@@ -900,10 +997,13 @@ class MyMAinWindow(QMainWindow):
         # 右缘锚定（结果树宽随 cover_scale 拉伸贴向缩略图右缘、右缘贴齐页面右 18px；
         # 议题 #173：固定 202 宽在最大化时离缩略图过远，改随窗口拉伸、两态间距一致）
         tree_w = max(int(202 * cover_scale), 202)
+        # 树高跟随页面高（2026-09-22 用户报告：树底与窗缘间大片空白）。设计页高
+        # 692 = 树顶 110 + 树高 563 + 底余 19；高度公式按同一基准反推，双向幂等。
+        tree_h = max(main_page.height() - 110 - 19, 100)
         ui.pushButton_start_cap.move(max(main_w - 120 - 20, 20), 13)
         ui.label_result.move(max(main_w - 211 - 9, 300), 70)
         ui.treeWidget_number.move(max(main_w - tree_w - 18, 300), 110)
-        ui.treeWidget_number.resize(tree_w, max(ui.treeWidget_number.height(), 100))
+        ui.treeWidget_number.resize(tree_w, tree_h)
         ui.pushButton_tree_clear.move(max(main_w - 20 - 40, 300), 110)
         # 选择目录按钮跟随开始按钮左移，保持 14px 视觉间距（设计 666 与 680 之间）
         ui.pushButton_select_media_folder.move(max(ui.pushButton_start_cap.x() - 101 - 14, 20), 13)
@@ -2453,7 +2553,7 @@ class MyMAinWindow(QMainWindow):
             ui.lineEdit_nfo_actor.text(),
             ui.lineEdit_nfo_year.text(),
             ui.lineEdit_nfo_title.text(),
-            ui.lineEdit_nfo_originaltitle.text(),
+            ui.textEdit_nfo_originaltitle.toPlainText(),
             ui.textEdit_nfo_outline.toPlainText(),
             ui.textEdit_nfo_originalplot.toPlainText(),
             ui.textEdit_nfo_tag.toPlainText(),
@@ -2969,7 +3069,7 @@ class MyMAinWindow(QMainWindow):
             self.Ui.lineEdit_nfo_actor.setText(actor)
             self.Ui.lineEdit_nfo_year.setText(json_data.year)
             self.Ui.lineEdit_nfo_title.setText(json_data.title)
-            self.Ui.lineEdit_nfo_originaltitle.setText(json_data.originaltitle)
+            self.Ui.textEdit_nfo_originaltitle.setPlainText(json_data.originaltitle)
             self.Ui.textEdit_nfo_outline.setPlainText(json_data.outline)
             self.Ui.textEdit_nfo_originalplot.setPlainText(json_data.originalplot)
             self.Ui.textEdit_nfo_tag.setPlainText(json_data.tag)
@@ -3006,7 +3106,7 @@ class MyMAinWindow(QMainWindow):
             json_data.actor = self.Ui.lineEdit_nfo_actor.text()
             json_data.year = self.Ui.lineEdit_nfo_year.text()
             json_data.title = self.Ui.lineEdit_nfo_title.text()
-            json_data.originaltitle = self.Ui.lineEdit_nfo_originaltitle.text()
+            json_data.originaltitle = self.Ui.textEdit_nfo_originaltitle.toPlainText()
             json_data.outline = self.Ui.textEdit_nfo_outline.toPlainText()
             json_data.originalplot = self.Ui.textEdit_nfo_originalplot.toPlainText()
             json_data.tag = self.Ui.textEdit_nfo_tag.toPlainText()
