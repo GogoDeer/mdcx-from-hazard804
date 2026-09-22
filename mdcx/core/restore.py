@@ -1,6 +1,7 @@
 import os
 import re
 import shutil
+import stat
 import time
 from pathlib import Path
 from typing import Any
@@ -131,6 +132,177 @@ def generate_ai_diagnostic_report(
         ]
     )
     return "\n".join(lines)
+
+
+OS_JUNK_FILES = {
+    "thumbs.db",
+    "ehthumbs.db",
+    "desktop.ini",
+    ".ds_store",
+    ".localized",
+}
+
+
+def _get_protected_roots(orig_dir: Path | None = None) -> set[Path]:
+    """收集绝不能被清理删除的受保护根路径（驱动器根、CWD、用户主目录、数据目录、输出目录等）"""
+    roots: set[Path] = set()
+    try:
+        roots.add(Path.cwd().resolve())
+    except Exception:
+        pass
+    try:
+        roots.add(Path.home().resolve())
+    except Exception:
+        pass
+    try:
+        roots.add(manager.data_folder.resolve())
+    except Exception:
+        pass
+
+    # 配置中设定的根目录
+    for attr in (
+        "success_folder",
+        "movie_path",
+        "failed_folder",
+        "success_output_folder",
+        "failed_output_folder",
+        "localdisk_path",
+        "netdisk_path",
+        "softlink_path",
+        "scrape_softlink_path",
+        "actor_photo_folder",
+        "media_path",
+    ):
+        val = getattr(manager.config, attr, None)
+        if val and isinstance(val, (str, Path)):
+            val_str = str(val)
+            if "{" in val_str:
+                val_str = val_str.split("{")[0].rstrip("/\\")
+            if val_str:
+                try:
+                    roots.add(Path(val_str).resolve())
+                except Exception:
+                    pass
+
+    # 还原目标目录及其所有祖先目录绝不能被误删
+    if orig_dir:
+        try:
+            curr = orig_dir.resolve()
+            while curr:
+                roots.add(curr)
+                if curr.parent == curr:
+                    break
+                curr = curr.parent
+        except Exception:
+            roots.add(orig_dir)
+
+    return roots
+
+
+def _is_protected_dir(dir_path: Path, protected_roots: set[Path]) -> bool:
+    """判断给定目录是否为受保护根目录，或受保护根目录的祖先目录"""
+    try:
+        resolved = dir_path.resolve()
+    except Exception:
+        resolved = dir_path
+
+    # 1. 驱动器根目录或文件系统根（如 C:\, D:\, /）
+    if resolved.parent == resolved or resolved == Path(resolved.anchor) or len(resolved.parts) <= 1:
+        return True
+
+    # 2. 属于受保护根集合，或者是受保护根目录的祖先目录
+    for root in protected_roots:
+        try:
+            root_res = root.resolve()
+        except Exception:
+            root_res = root
+        if resolved == root_res:
+            return True
+        try:
+            if root_res.is_relative_to(resolved):
+                return True
+        except Exception:
+            pass
+
+    return False
+
+
+def _is_dir_empty_or_junk(path: Path) -> bool:
+    """判断目录是否为空，或仅包含操作系统垃圾文件（如 Thumbs.db, desktop.ini, .DS_Store）"""
+    if not path.exists() or not path.is_dir():
+        return False
+    try:
+        for item in path.rglob("*"):
+            if item.is_file() or item.is_symlink():
+                if item.name.lower() not in OS_JUNK_FILES:
+                    return False
+        return True
+    except Exception:
+        return False
+
+
+def _safe_remove_empty_dir(path: Path) -> bool:
+    """安全删除空目录（清理残留的 OS 垃圾文件，并处理 Windows 只读属性）"""
+    if not path.exists() or not path.is_dir():
+        return False
+
+    # 清理残留的垃圾文件
+    try:
+        for item in list(path.rglob("*")):
+            if item.is_file() or item.is_symlink():
+                if item.name.lower() in OS_JUNK_FILES:
+                    try:
+                        os.chmod(item, stat.S_IWRITE | stat.S_IREAD)
+                        item.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+    except Exception:
+        pass
+
+    def _on_rm_error(func, p, exc):
+        try:
+            os.chmod(p, stat.S_IWRITE | stat.S_IREAD)
+            func(p)
+        except Exception:
+            pass
+
+    try:
+        shutil.rmtree(path, on_exc=_on_rm_error)
+        return not path.exists()
+    except Exception:
+        try:
+            path.rmdir()
+            return not path.exists()
+        except Exception:
+            return False
+
+
+def _cleanup_empty_dir_and_parents(
+    start_dir: Path,
+    protected_roots: set[Path],
+) -> list[Path]:
+    """
+    若 start_dir 为空（或仅含垃圾文件）则删除；
+    删除后逐级向上检查父目录，若父目录也变为空目录则级联删除，
+    直到遇到非空目录或受保护根目录为止。
+    返回所有成功删除的目录列表。
+    """
+    deleted_dirs: list[Path] = []
+    curr = start_dir
+    while curr and curr.exists() and curr.is_dir():
+        if _is_protected_dir(curr, protected_roots):
+            break
+        if not _is_dir_empty_or_junk(curr):
+            break
+
+        parent = curr.parent
+        if _safe_remove_empty_dir(curr):
+            deleted_dirs.append(curr)
+            curr = parent
+        else:
+            break
+
+    return deleted_dirs
 
 
 def restore_scraped_movie(
@@ -269,18 +441,35 @@ def restore_scraped_movie(
                 except Exception:
                     pass
 
-    # 5. 若目标文件夹已无视频文件或变为空目录，则安全删除新文件夹
-    if new_folder.exists() and new_folder.resolve() != orig_dir.resolve():
-        remaining_videos = [
-            f
-            for f in new_folder.rglob("*")
-            if f.is_file() and f.suffix.lower() in [".mp4", ".mkv", ".avi", ".wmv", ".iso", ".mov", ".ts", ".m2ts"]
-        ]
-        if not remaining_videos:
-            try:
-                shutil.rmtree(new_folder, ignore_errors=True)
-            except Exception:
-                pass
+    # 5. 安全清理视频所在目录及残留空目录（支持向上级联清理）
+    protected_roots = _get_protected_roots(orig_dir=orig_dir)
+    candidate_dirs: list[Path] = []
+    if new_video and new_video.parent:
+        candidate_dirs.append(new_video.parent)
+    if new_folder:
+        candidate_dirs.append(new_folder)
+    for cd in manifest.created_dirs:
+        if cd:
+            candidate_dirs.append(cd)
+    if file_path and file_path.parent:
+        candidate_dirs.append(file_path.parent)
+
+    # 路径去重并按层级深度倒序排列（先处理最深层子目录）
+    seen_candidates: set[Path] = set()
+    sorted_candidates: list[Path] = []
+    for cand in candidate_dirs:
+        try:
+            cand_res = cand.resolve()
+        except Exception:
+            cand_res = cand
+        if cand_res not in seen_candidates and cand.exists() and cand.is_dir():
+            seen_candidates.add(cand_res)
+            sorted_candidates.append(cand)
+    sorted_candidates.sort(key=lambda p: len(p.resolve().parts), reverse=True)
+
+    for cand_dir in sorted_candidates:
+        if cand_dir.exists() and cand_dir.is_dir():
+            _cleanup_empty_dir_and_parents(cand_dir, protected_roots)
 
     # 6. 从 success_list 中注销
     try:

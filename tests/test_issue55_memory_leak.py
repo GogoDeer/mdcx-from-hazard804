@@ -31,7 +31,7 @@ REMOVED_SITES = [
     "hdouban",
     "mdtv",
     "love6",
-    "kin8",
+    # kin8 以官站爬虫回归（见 mdcx/crawlers/kin8.py），不再剔除
     "giga",
     "cableav",
     # 7mmtv 2026-09 以聚合站爬虫回归（见 mdcx/crawlers/7mmtv.py），不再剔除

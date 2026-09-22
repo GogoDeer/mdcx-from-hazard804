@@ -1398,7 +1398,7 @@ async def test_official_generates_five_sub_specs(monkeypatch):
 
     specs = await build_network_check_specs()
     official_specs = [s for s in specs if s.site == Website.OFFICIAL]
-    assert len(official_specs) == len(UNCENSORED_OFFICIAL_SITES) == 5
+    assert len(official_specs) == len(UNCENSORED_OFFICIAL_SITES)
     assert {s.name for s in official_specs} == {f"official·{src}" for src in UNCENSORED_OFFICIAL_SITES}
     assert all(s.url and s.url.startswith("https://") for s in official_specs)
 

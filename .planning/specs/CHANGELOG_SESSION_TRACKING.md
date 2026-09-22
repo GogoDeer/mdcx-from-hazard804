@@ -131,6 +131,16 @@
   5. **AI 诊断闭环集成**：生成的 Markdown 诊断报告显著标明 **MDCx 配置文件路径** 与 **全量运行日志文件路径**，使外部 AI 可直接根据路径精准定位网络、正则或站点配置故障；报告自动复制到系统剪切板，并同步归档于 `Log/ai_reports/<datetime>_<number>_diagnose.md`。
   6. **一键快捷重搜**：还原成功后弹窗提供【重新指定番号】快捷按钮，一键调出番号输入框重新发起刮削。
 
+### 3.6 影片还原后残留空目录安全级联删除 (Safe Empty Directory Cascade Cleanup on Restore)
+- **主要文件**：
+  - `mdcx/core/restore.py`：新增 `_is_dir_empty_or_junk()`、`_get_protected_roots()`、`_is_protected_dir()`、`_safe_remove_empty_dir()` 与 `_cleanup_empty_dir_and_parents()`。
+  - `tests/test_restore_movie.py`：新增保护输出根、保留其他视频/用户文件、清理 Windows/macOS 垃圾文件等系列单元测试。
+- **核心机制**：
+  1. **多候选路径准确定位**：同时收集 `new_video.parent`（视频实际所在路径）、`manifest.new_folder_path`、`manifest.created_dirs` 与 `file_path.parent`，按深度由深到浅倒序扫描。
+  2. **智能识别操作系统垃圾文件**：自动识别并清理 Windows 的 `Thumbs.db`、`desktop.ini` 与 macOS 的 `.DS_Store`、`.localized`，避免系统隐藏缓存阻断空目录删除。
+  3. **自底向上级联删除**：当番号目录删除后，若父级目录（如演员名目录）也变为空，自动向上级联清理，彻底消除孤儿空目录残留。
+  4. **全方位根目录防御**：对磁盘驱动器根目录、MDCx 数据目录、用户配置的输出根目录（`success_output_folder`）、待处理目录与还原目的目录及其所有祖先实施绝对保护，绝不误删。目录内若包含其他影片或用户自建文件，坚决保留。
+
 ---
 
 ## 4. 关键 Bug 修复与根因剖析 (Post-Mortems)

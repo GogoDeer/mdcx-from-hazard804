@@ -13,11 +13,14 @@ from mdcx.models.manifest import ScrapeHistoryRegistry, ScrapeManifest
 def clean_registry(tmp_path):
     ScrapeHistoryRegistry.clear()
     original_data_folder = manager.data_folder
+    original_success_output = getattr(manager.config, "success_output_folder", None)
     manager.data_folder = tmp_path
     (tmp_path / "userdata").mkdir(parents=True, exist_ok=True)
     (tmp_path / "Log" / "ai_reports").mkdir(parents=True, exist_ok=True)
     yield
     manager.data_folder = original_data_folder
+    if original_success_output is not None:
+        manager.config.success_output_folder = original_success_output
     ScrapeHistoryRegistry.clear()
 
 
@@ -172,3 +175,176 @@ def test_generate_ai_diagnostic_report_fields(tmp_path):
     assert "⚙️ **MDCx 配置文件**" in report
     assert "📑 **全量运行日志**" in report
     assert "Test-999.mp4" in report
+
+
+def test_restore_movie_protects_success_output_folder_and_cleans_empty_parents(tmp_path):
+    # 模拟用户配置的 success_output_folder
+    output_root = tmp_path / "output_library"
+    output_root.mkdir()
+    manager.config.success_output_folder = str(output_root)
+
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    orig_video = input_dir / "movie.mp4"
+    orig_video.write_bytes(b"video content")
+
+    actor_dir = output_root / "ACTOR_NAME"
+    movie_dir = actor_dir / "CAR-001"
+    movie_dir.mkdir(parents=True)
+    new_video = movie_dir / "CAR-001.mp4"
+    nfo_file = movie_dir / "CAR-001.nfo"
+    poster_file = movie_dir / "CAR-001-poster.jpg"
+
+    orig_video.rename(new_video)
+    nfo_file.write_text("<movie/>", encoding="utf-8")
+    poster_file.write_bytes(b"poster")
+
+    manifest = ScrapeManifest(
+        original_file_path=orig_video,
+        original_folder_path=input_dir,
+        new_file_path=new_video,
+        new_folder_path=movie_dir,
+        link_mode=0,
+        created_files=[nfo_file, poster_file],
+        created_dirs=[movie_dir, actor_dir],
+        extracted_number="CAR-001",
+    )
+    ScrapeHistoryRegistry.save(manifest)
+
+    show_data = MagicMock()
+    show_data.manifest = manifest
+
+    success, msg, _, _ = restore_scraped_movie(show_data, new_video)
+
+    assert success is True
+    assert orig_video.exists()
+    # 验证影片所在目录 CAR-001 和空的父目录 ACTOR_NAME 均被清理
+    assert not movie_dir.exists()
+    assert not actor_dir.exists()
+    # 验证受保护的输出根目录 output_root 依然被完好保留
+    assert output_root.exists()
+
+
+def test_restore_movie_preserves_dir_with_other_videos(tmp_path):
+    output_root = tmp_path / "output"
+    actor_dir = output_root / "ACTOR_NAME"
+    movie_dir_1 = actor_dir / "CAR-001"
+    movie_dir_2 = actor_dir / "CAR-002"
+    movie_dir_1.mkdir(parents=True)
+    movie_dir_2.mkdir(parents=True)
+
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    orig_video = input_dir / "CAR-001.mp4"
+    orig_video.write_bytes(b"CAR-001")
+
+    new_video_1 = movie_dir_1 / "CAR-001.mp4"
+    nfo_1 = movie_dir_1 / "CAR-001.nfo"
+    orig_video.rename(new_video_1)
+    nfo_1.write_text("<movie>1</movie>", encoding="utf-8")
+
+    # CAR-002 依然存在于 actor_dir
+    other_video = movie_dir_2 / "CAR-002.mp4"
+    other_video.write_bytes(b"CAR-002")
+
+    manifest = ScrapeManifest(
+        original_file_path=orig_video,
+        original_folder_path=input_dir,
+        new_file_path=new_video_1,
+        new_folder_path=movie_dir_1,
+        link_mode=0,
+        created_files=[nfo_1],
+        created_dirs=[movie_dir_1],
+        extracted_number="CAR-001",
+    )
+    ScrapeHistoryRegistry.save(manifest)
+
+    show_data = MagicMock()
+    show_data.manifest = manifest
+
+    success, _, _, _ = restore_scraped_movie(show_data, new_video_1)
+
+    assert success is True
+    assert orig_video.exists()
+    # CAR-001 目录已被删除
+    assert not movie_dir_1.exists()
+    # actor_dir 下还有 CAR-002，必须被保留！
+    assert actor_dir.exists()
+    assert other_video.exists()
+
+
+def test_restore_movie_preserves_dir_with_user_files(tmp_path):
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    orig_video = input_dir / "test.mp4"
+    orig_video.write_bytes(b"test")
+
+    movie_dir = tmp_path / "output" / "CAR-001"
+    movie_dir.mkdir(parents=True)
+    new_video = movie_dir / "CAR-001.mp4"
+    orig_video.rename(new_video)
+
+    # 用户手动放置的重要文件
+    user_file = movie_dir / "my_notes.txt"
+    user_file.write_text("user private notes", encoding="utf-8")
+
+    manifest = ScrapeManifest(
+        original_file_path=orig_video,
+        original_folder_path=input_dir,
+        new_file_path=new_video,
+        new_folder_path=movie_dir,
+        link_mode=0,
+        extracted_number="CAR-001",
+    )
+    ScrapeHistoryRegistry.save(manifest)
+
+    show_data = MagicMock()
+    show_data.manifest = manifest
+
+    success, _, _, _ = restore_scraped_movie(show_data, new_video)
+
+    assert success is True
+    assert orig_video.exists()
+    # 含有用户自建文件的目录绝对不能删除
+    assert movie_dir.exists()
+    assert user_file.exists()
+    assert user_file.read_text(encoding="utf-8") == "user private notes"
+
+
+def test_restore_movie_cleans_dir_with_os_junk_files(tmp_path):
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    orig_video = input_dir / "test.mp4"
+    orig_video.write_bytes(b"test")
+
+    movie_dir = tmp_path / "output" / "ACTOR" / "CAR-001"
+    movie_dir.mkdir(parents=True)
+    new_video = movie_dir / "CAR-001.mp4"
+    orig_video.rename(new_video)
+
+    # 模拟 Windows / macOS 操作系统生成的隐藏垃圾/元数据文件
+    (movie_dir / "Thumbs.db").write_bytes(b"fake thumbs cache")
+    (movie_dir / "desktop.ini").write_text("[.ShellClassInfo]\nIconIndex=0", encoding="utf-8")
+    (movie_dir.parent / ".DS_Store").write_bytes(b"fake ds store")
+
+    manifest = ScrapeManifest(
+        original_file_path=orig_video,
+        original_folder_path=input_dir,
+        new_file_path=new_video,
+        new_folder_path=movie_dir,
+        link_mode=0,
+        created_dirs=[movie_dir],
+        extracted_number="CAR-001",
+    )
+    ScrapeHistoryRegistry.save(manifest)
+
+    show_data = MagicMock()
+    show_data.manifest = manifest
+
+    success, _, _, _ = restore_scraped_movie(show_data, new_video)
+
+    assert success is True
+    assert orig_video.exists()
+    # 仅含 OS 垃圾文件被判定为实质空目录，连同父目录一并清理
+    assert not movie_dir.exists()
+    assert not (tmp_path / "output" / "ACTOR").exists()
