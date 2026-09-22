@@ -1158,23 +1158,30 @@ def test_main_page_cover_scales_proportionally_when_maximized(win, app):
 
     assert ui.label_poster.width() == int(156 * scale), f"封面框宽未按 scale 放大: {ui.label_poster.width()}"
     assert ui.label_poster.height() == int(220 * scale), f"封面框高未按 scale 放大: {ui.label_poster.height()}"
-    # 2026-09-22：图框整体右移贴统一右界 info_right（树左缘-13 与缩略图右缘取大）
+    # 2026-09-22「左右双平衡」：poster 左缘跟标签列（无平移），thumb 左缘保持设计
+    # 间距、宽度自适应拉伸到统一右界 info_right（树左缘-13 与缩略图右缘取大）
     tree_w = max(int(202 * scale), 202)
     tree_x = max(stacked_w - tree_w - 18, 300)
     info_right = max(tree_x - 13, int(580 * scale))
-    cover_extra = info_right - int(580 * scale)
-    assert ui.label_poster.x() == int(80 * scale) + cover_extra, f"封面框 x 未按 scale+右界平移: {ui.label_poster.x()}"
+    assert ui.label_poster.x() == int(80 * scale), f"封面框 x 应紧贴标签列: {ui.label_poster.x()}"
     assert ui.label_poster.y() == 160, f"封面框 y 应保留设计 160: {ui.label_poster.y()}"
 
-    assert ui.label_thumb.width() == int(328 * scale), f"缩略框宽未按 scale 放大: {ui.label_thumb.width()}"
     assert ui.label_thumb.height() == int(220 * scale), f"缩略框高未按 scale 放大: {ui.label_thumb.height()}"
-    assert ui.label_thumb.x() == int(252 * scale) + cover_extra, f"缩略框 x 未按 scale+右界平移: {ui.label_thumb.x()}"
+    assert ui.label_thumb.x() == int(252 * scale), f"缩略框 x 应保持设计间距: {ui.label_thumb.x()}"
+    assert ui.label_thumb.width() == pytest.approx(info_right - int(252 * scale), abs=1), (
+        f"缩略框宽度未自适应拉伸到统一右界: {ui.label_thumb.width()}"
+    )
     assert ui.label_thumb.x() + ui.label_thumb.width() == pytest.approx(info_right, abs=1), (
         "缩略框右缘未贴统一右界 info_right"
     )
 
-    assert ui.label_poster_size.width() == int(411 * scale), f"封面尺寸文字宽未按 scale: {ui.label_poster_size.width()}"
-    assert ui.label_thumb_size.width() == int(201 * scale), f"缩略尺寸文字宽未按 scale: {ui.label_thumb_size.width()}"
+    # 尺寸文字宽度自适应（poster_size 从 poster 左缘、thumb_size 从设计 222 拉到右界）
+    assert ui.label_poster_size.width() == pytest.approx(info_right - int(80 * scale), abs=1), (
+        f"封面尺寸文字宽未自适应: {ui.label_poster_size.width()}"
+    )
+    assert ui.label_thumb_size.width() == pytest.approx(info_right - int(222 * scale), abs=1), (
+        f"缩略尺寸文字宽未自适应: {ui.label_thumb_size.width()}"
+    )
 
 
 def test_nfo_lib_info_page_no_right_blank_when_maximized(win, app):

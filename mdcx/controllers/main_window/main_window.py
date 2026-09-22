@@ -545,7 +545,7 @@ class MyMAinWindow(QMainWindow):
         super().showEvent(a0)
 
     def _apply_adaptive_default_size(self) -> None:
-        """默认尺寸自适应（历史固定 1030x700 偏小，现按所在屏可用区缩放，大屏 1280x860）。"""
+        """默认尺寸自适应（历史固定 1030x700 偏小，现按所在屏可用区缩放，大屏 1280x956）。"""
         screen = self.screen()
         if screen is not None:
             avail = screen.availableGeometry()
@@ -553,6 +553,11 @@ class MyMAinWindow(QMainWindow):
         else:
             def_w, def_h = 1030, 700
         self.resize(def_w, def_h)
+        # 用户报告（2026-09-22，Windows 原生边框）：首次显示后设置页浮框等绝对定位
+        # 控件短暂滞留旧几何、隔一会儿才自愈——与 #78「原生边框 resize 时序错过布局
+        # 更新」同族。resize 触发的 resizeEvent 在首帧时序下可能被吞，事件循环空转
+        # 一轮后强制补同步一次（幂等），根除首帧错位。
+        QTimer.singleShot(0, self._sync_page_layouts)
 
     # 用于计算窗口各子页面初始设计尺寸，被 resizeEvent 用于按比例缩放
     _BASE_W = 1040
@@ -832,24 +837,20 @@ class MyMAinWindow(QMainWindow):
         # 选择目录按钮跟随开始按钮左移，保持 14px 视觉间距（设计 666 与 680 之间）
         ui.pushButton_select_media_folder.move(max(ui.pushButton_start_cap.x() - 101 - 14, 20), 13)
 
-        # 议题 #124/#135：封面/缩略图按窗口宽度横向等比放大（160×220 → ×scale），
-        # 下方信息区（简介/标签/日期/导演/制作 + 右列时长/系列/发行 + 分隔线 + 勾选框）
-        # 按封面框的增高量整体**下移**，保持与「番号/标题/封面」同一左列（x 不变），
-        # 从而不会被放大的黑框盖住。#135 修正：此前误将信息区整组**右移**到缩略图
-        # 右侧，导致最小化时字段被推到窗口右半、与番号/标题/封面不对齐。
-        # 右界对齐（2026-09-22 用户反馈）：封面/缩略图框、下划线、勾选框、图标排统一
-        # 贴 info_right = max(结果树左缘-13, 缩略图右缘)——窄窗口树左缘小于缩略图右缘
-        # 时兜底回缩略图右缘；图框整体平移量 cover_extra = info_right - thumb_right，
-        # 设计态（page 820）为 7px（图标排设计右缘 587 与缩略图右缘 580 的既有差）。
+        # 左右双平衡布局（2026-09-22 用户反馈「左右都靠齐」；参照媒体服务器详情页）：
+        #   · poster 左缘紧跟「封面:」标签列（x=80×scale，不平移）——左侧紧凑无空洞；
+        #   · thumb 左缘保持设计间距（x=252×scale）、宽度自适应拉伸到统一右界
+        #     info_right——右侧与下划线/勾选框/图标排对齐；高度恒 220×scale 不变，
+        #     信息区下移量、高度约束、勾选框纵向逻辑全部不受影响；
+        #   · thumb 显示改为「等比裁剪填充」（_rescale_preview_pixmaps 中
+        #     KeepAspectRatioByExpanding），框加宽后剧照裁上下而非变形；
+        #   · poster 显示保持 KeepAspectRatio（框比例恒 156:220，等比缩放无变形）。
         thumb_right = int(580 * cover_scale)
         info_right = max(ui.treeWidget_number.x() - 13, thumb_right)
-        cover_extra = max(info_right - thumb_right, 0)
-        ui.label_poster.setGeometry(
-            int(80 * cover_scale) + cover_extra, 160, int(156 * cover_scale), int(220 * cover_scale)
-        )
-        ui.label_thumb.setGeometry(
-            int(252 * cover_scale) + cover_extra, 160, int(328 * cover_scale), int(220 * cover_scale)
-        )
+        poster_w = int(156 * cover_scale)
+        thumb_h = int(220 * cover_scale)
+        ui.label_poster.setGeometry(int(80 * cover_scale), 160, poster_w, thumb_h)
+        ui.label_thumb.setGeometry(int(252 * cover_scale), 160, max(info_right - int(252 * cover_scale), 60), thumb_h)
         # 议题 #144: 框放大后原图按新框尺寸重渲染(窗口缩放与图片显示同步)
         self._rescale_preview_pixmaps()
         cover_bottom = int(160 + 220 * cover_scale)
@@ -860,10 +861,10 @@ class MyMAinWindow(QMainWindow):
         # 下方各行只随封面增高 info_delta 下移，不再被行高增量推出页底。
         info_grow = info_delta  # 简介/标签以下各行的总下移量
         ui.label_poster_size.setGeometry(
-            int(80 * cover_scale) + cover_extra, cover_bottom, int(411 * cover_scale), int(40 * cover_scale)
+            int(80 * cover_scale), cover_bottom, max(info_right - int(80 * cover_scale), 60), int(40 * cover_scale)
         )
         ui.label_thumb_size.setGeometry(
-            int(222 * cover_scale) + cover_extra, cover_bottom, int(201 * cover_scale), int(40 * cover_scale)
+            int(222 * cover_scale), cover_bottom, max(info_right - int(222 * cover_scale), 60), int(40 * cover_scale)
         )
         # 议题 #124：勾选框右缘贴缩略图框右缘（即 info_right），x = info_right - 90；
         # y 贴封面框底（cover_bottom），但矮窗口 info_delta 被夹小时信息区上移会与
@@ -1871,25 +1872,27 @@ class MyMAinWindow(QMainWindow):
     def _rescale_preview_pixmaps(self) -> None:
         """议题 #144: 按 label 当前几何重渲染原图, 保证窗口缩放与图片显示同步。
 
-        缩放规则 KeepAspectRatio(等比、不裁剪、居中留白由 QLabel 对齐负责),
-        design 尺寸与原行为一致; 缓存为空(占位文本态)时跳过。
+        poster: KeepAspectRatio(等比、不裁剪)——框比例恒 156:220，与竖版海报一致；
+        thumb: KeepAspectRatioByExpanding(等比裁剪填充)——2026-09-22 起 thumb 宽度
+        自适应拉伸到统一右界、框比例随窗口变化，裁剪填充保证剧照不变形（类似
+        播放器封面画面，左右加宽时上下裁剪）；label ScaledContents=True 会把
+        pixmap 再拉伸到框尺寸，因此预渲染必须精确到框尺寸（比例一致则无形变）。
+        缓存为空(占位文本态)时跳过。
         """
-        for src, label in (
-            (self._poster_src_pixmap, self.Ui.label_poster),
-            (self._thumb_src_pixmap, self.Ui.label_thumb),
+        for src, label, mode in (
+            (self._poster_src_pixmap, self.Ui.label_poster, Qt.AspectRatioMode.KeepAspectRatio),
+            (
+                self._thumb_src_pixmap,
+                self.Ui.label_thumb,
+                Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+            ),
         ):
             if src is None or src.isNull():
                 continue
             size = label.size()
             if size.width() <= 0 or size.height() <= 0:
                 continue
-            label.setPixmap(
-                src.scaled(
-                    size,
-                    Qt.AspectRatioMode.KeepAspectRatio,
-                    Qt.TransformationMode.SmoothTransformation,
-                )
-            )
+            label.setPixmap(src.scaled(size, mode, Qt.TransformationMode.SmoothTransformation))
 
     def resize_label_and_setpixmap(self, poster_pix, thumb_pix):
         if poster_pix is not None:

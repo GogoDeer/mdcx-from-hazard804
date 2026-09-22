@@ -107,6 +107,9 @@
   - **PyQt6 测试纪律**：每个含 Qt 的测试文件顶部（PyQt6 导入前）自持 `os.environ.setdefault("QT_QPA_PLATFORM","offscreen")`；fixture 构造后立即停全部 QTimer；qFatal abort（栈无 Python 行号）查 QTimer 槽与 dummy 桩缺方法。Qt 同名 API 重载签名不同，改前确认目标类签名；测试桩显式枚举属性方法。隔离配置目录用 `monkeypatch.chdir(tmp_path)`，勿把 dummy 的 Path 属性改 str。
   - **主窗最小尺寸是动态的（2026-09-21 起）**：`init.py::Init_Ui` 按 primaryScreen 可用区算（`_adaptive_window_sizes`，offscreen 虚拟屏 800x800 → min 480x600、启动 720x680）。写矮窗口几何回归测试前必须 `win.setMinimumSize(0, 0)` 解耦，否则 resize 被最小高顶起、场景失真；断言 label 裁切一律用 `win.height()` 而非目标 resize 值。**窗口几何测试锚点两坑（2026-09-22）**：①page_main 宽 ≠ 窗口宽-240（导航实测 213，1040 窗口→page 827>设计 820，extra=7 属公式正确）——「复位到设计位」断言要用真正低于设计宽的窗口（如 1000）或按公式算；②钳制类公式（min/max 双向钳）的测试必须先 `assert expected < 未钳值` 验证场景真的触发钳制，否则测试恒真走过场。
   - 主窗口全局绝对定位：长文本 QLabel 用 wordWrap 查 sizeHint；新增顶层控件纳入 resizeEvent 手动几何同步。QComboBox 装饰后缀：`addItem(icon, 文本, UserRole 纯值)`，消费点统一 `currentData()`，信号 handler 收文本须剥后缀。
+  - **改布局先锁整体设计语言，别逐控件打补丁（2026-09-22 用户批评「没有大局观」实证）**：主界面信息区按「右缘对齐」逐个右移图框，破坏了「标签列-内容」左聚关系，封面框与「封面:」标签间出现大空洞——用户真实诉求是「左右都靠齐」的整体平衡（参照媒体服务器详情页：poster 左贴标签列、thumb 宽度自适应拉伸填满到右界）。布局类诉求动手前先用一句话向用户复述目标形态再改；同一区域被要求改两次即停下重新对齐。军规③「设计基准+extra」适用于锚定类控件；**填充类拉伸（框宽自适应）与平移是两种不同手段，别混用**。
+  - **QLabel ScaledContents=True 的双重缩放陷阱（2026-09-22）**：`setPixmap` 后 QLabel 会把 pixmap 再拉伸到框尺寸——`_rescale_preview_pixmaps` 里 KeepAspectRatio 预渲染被覆盖，净效果=按框比例拉伸变形；框比例恒定（宽高同 ×scale）时无形变，**框比例动态变化（宽度自适应拉伸）时必须换 KeepAspectRatioByExpanding 预渲染到精确框尺寸**（等比裁剪填充，类似播放器 object-fit: cover），poster 竖版保持 KeepAspectRatio 不动。改图框宽高比前先查渲染模式。
+  - **Windows 原生边框首帧时序（2026-09-22 实证）**：首次 showEvent 应用默认尺寸后，resizeEvent 驱动的绝对定位同步在首帧可能被吞——设置页浮框等短暂错位、隔一会儿自愈（#78「原生边框 resize 错过布局更新」同族）。已在 `_apply_adaptive_default_size` 尾部 `QTimer.singleShot(0, self._sync_page_layouts)` 强制补同步（幂等），勿回退；同类「自愈型错位」优先怀疑首帧时序而非几何公式。
 
 ## 站点与网络
 
