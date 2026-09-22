@@ -354,20 +354,24 @@ def test_page_main_info_fields_cleared_of_cover_boxes() -> None:
     cover_bottom = int(160 + 220 * cover_scale)
     info_delta = cover_bottom - 380
     thumb_right = int(580 * cover_scale)
-    wide_w = max(thumb_right - 70, 60)
+    # 统一右界 info_right（2026-09-22）：图框/下划线/勾选框/图标排右缘贴结果树左缘-13
+    tree_w = max(int(202 * cover_scale), 202)
+    tree_x = max(avail_w - tree_w - 18, 300)
+    info_right = max(tree_x - 13, thumb_right)
+    wide_w = max(info_right - 70, 60)
     narrow_w = max(int(220 * cover_scale), 60)
     right_value_x = int(350 * cover_scale)
-    right_line_w = max(thumb_right - right_value_x, 60)
+    right_line_w = max(info_right - right_value_x, 60)
 
     # 横向：左列标签保持设计 x=30（与「番号/标题/封面」对齐）；值/下划线按议题 #141
-    # 等比例加长——简介/标签与右列下划线右缘延伸到缩略图右缘，左列窄字段 ×scale。
+    # 等比例加长——简介/标签与右列下划线右缘延伸到统一右界 info_right，左列窄字段 ×scale。
     for nm in ("label_18", "label_33", "label_13", "label_23", "label_30"):
         assert getattr(ui, nm).x() == 30, f"#135 回归：{nm} 左缘未保持设计 x=30"
     for nm in ("label_outline", "label_tag", "line_6", "line_7"):
         w = getattr(ui, nm)
         assert w.x() == 70, f"#141：{nm} 左缘应为 70"
-        assert w.width() == wide_w, f"#141：{nm} 宽度未延伸到缩略图右缘（{w.width()} != {wide_w}）"
-        assert w.x() + w.width() == thumb_right, f"#141：{nm} 右缘未到缩略图右缘"
+        assert w.width() == wide_w, f"#141：{nm} 宽度未延伸到统一右界（{w.width()} != {wide_w}）"
+        assert w.x() + w.width() == info_right, f"#141：{nm} 右缘未到统一右界 info_right"
     for nm in ("label_release", "label_director", "label_studio", "line_8", "line_12", "line_13"):
         w = getattr(ui, nm)
         assert w.x() == 70
@@ -377,8 +381,8 @@ def test_page_main_info_fields_cleared_of_cover_boxes() -> None:
     for nm in ("label_series", "label_runtime", "label_publish", "line_9", "line_10", "line_11"):
         w = getattr(ui, nm)
         assert w.x() == right_value_x
-        assert w.width() == right_line_w, f"#141：{nm} 宽度未延伸到缩略图右缘"
-        assert w.x() + w.width() == thumb_right, f"#141：{nm} 右缘未到缩略图右缘"
+        assert w.width() == right_line_w, f"#141：{nm} 宽度未延伸到统一右界"
+        assert w.x() + w.width() == info_right, f"#141：{nm} 右缘未到统一右界 info_right"
     # 纵向：尺寸文字/勾选框 顶须等于封面底（不被压叠）
     for nm in ("label_poster_size", "label_thumb_size", "checkBox_cover"):
         w = getattr(ui, nm)

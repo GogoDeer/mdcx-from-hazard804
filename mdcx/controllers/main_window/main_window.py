@@ -837,8 +837,19 @@ class MyMAinWindow(QMainWindow):
         # 按封面框的增高量整体**下移**，保持与「番号/标题/封面」同一左列（x 不变），
         # 从而不会被放大的黑框盖住。#135 修正：此前误将信息区整组**右移**到缩略图
         # 右侧，导致最小化时字段被推到窗口右半、与番号/标题/封面不对齐。
-        ui.label_poster.setGeometry(int(80 * cover_scale), 160, int(156 * cover_scale), int(220 * cover_scale))
-        ui.label_thumb.setGeometry(int(252 * cover_scale), 160, int(328 * cover_scale), int(220 * cover_scale))
+        # 右界对齐（2026-09-22 用户反馈）：封面/缩略图框、下划线、勾选框、图标排统一
+        # 贴 info_right = max(结果树左缘-13, 缩略图右缘)——窄窗口树左缘小于缩略图右缘
+        # 时兜底回缩略图右缘；图框整体平移量 cover_extra = info_right - thumb_right，
+        # 设计态（page 820）为 7px（图标排设计右缘 587 与缩略图右缘 580 的既有差）。
+        thumb_right = int(580 * cover_scale)
+        info_right = max(ui.treeWidget_number.x() - 13, thumb_right)
+        cover_extra = max(info_right - thumb_right, 0)
+        ui.label_poster.setGeometry(
+            int(80 * cover_scale) + cover_extra, 160, int(156 * cover_scale), int(220 * cover_scale)
+        )
+        ui.label_thumb.setGeometry(
+            int(252 * cover_scale) + cover_extra, 160, int(328 * cover_scale), int(220 * cover_scale)
+        )
         # 议题 #144: 框放大后原图按新框尺寸重渲染(窗口缩放与图片显示同步)
         self._rescale_preview_pixmaps()
         cover_bottom = int(160 + 220 * cover_scale)
@@ -849,19 +860,17 @@ class MyMAinWindow(QMainWindow):
         # 下方各行只随封面增高 info_delta 下移，不再被行高增量推出页底。
         info_grow = info_delta  # 简介/标签以下各行的总下移量
         ui.label_poster_size.setGeometry(
-            int(80 * cover_scale), cover_bottom, int(411 * cover_scale), int(40 * cover_scale)
+            int(80 * cover_scale) + cover_extra, cover_bottom, int(411 * cover_scale), int(40 * cover_scale)
         )
         ui.label_thumb_size.setGeometry(
-            int(222 * cover_scale), cover_bottom, int(201 * cover_scale), int(40 * cover_scale)
+            int(222 * cover_scale) + cover_extra, cover_bottom, int(201 * cover_scale), int(40 * cover_scale)
         )
-        # 议题 #124：勾选框右缘贴缩略图框右缘（设计 490+90=580=thumb_right），
-        # x = thumb_right - 90 等比跟随；y 贴封面框底（cover_bottom），但矮窗口
-        # info_delta 被夹小时信息区上移会与勾选框相撞（用户报告：简介栏与勾选框
-        # 重叠且勾选框被 line_6/label_thumb 盖住不可点）——y 取 min(cover_bottom,
-        # 380+info_delta) 保底钳到信息区上方 50px 设计间隙处，绝不与简介行重叠；
-        # zorder 已把勾选框提到 label_thumb 之上（钳到框内底部时仍可点击）。
-        thumb_right = int(580 * cover_scale)
-        ui.checkBox_cover.move(thumb_right - 90, min(cover_bottom, 380 + info_delta))
+        # 议题 #124：勾选框右缘贴缩略图框右缘（即 info_right），x = info_right - 90；
+        # y 贴封面框底（cover_bottom），但矮窗口 info_delta 被夹小时信息区上移会与
+        # 勾选框相撞（用户报告：简介栏与勾选框重叠且勾选框被 line_6/label_thumb 盖住
+        # 不可点）——y 取 min(cover_bottom, 380+info_delta) 保底钳到信息区上方 50px
+        # 设计间隙处，绝不与简介行重叠；zorder 已把勾选框提到 label_thumb 之上。
+        ui.checkBox_cover.move(info_right - 90, min(cover_bottom, 380 + info_delta))
         # 信息区各控件：左列标签锚定设计 x=30（与「番号/标题/封面」对齐），y 统一下移
         # info_delta；下划线/值列按 cover_scale 等比例加长（议题 #141）：
         #   · 简介/标签（设计 x=70、宽 500）与右列时长/系列/发行（设计 x=350）的下划线
@@ -878,9 +887,9 @@ class MyMAinWindow(QMainWindow):
             ("label_30", 630),
         ):
             getattr(ui, name).move(30, y + info_grow)
-        # 简介/标签：左缘 x=70，右缘延伸到缩略图右缘；行高恒定 40px、最多两行（#154），
-        # 下划线贴行底(设计偏移 30)，简介之下的各行只随 info_delta 下移
-        wide_w = max(thumb_right - 70, 60)
+        # 简介/标签：左缘 x=70，行高恒定 40px、最多两行（#154），下划线贴行底(设计偏移 30)；
+        # 右缘与图框/图标排统一贴 info_right（用户反馈：下划线右侧留大片空白）
+        wide_w = max(info_right - 70, 60)
         ui.label_outline.setGeometry(70, 430 + info_delta, wide_w, 40)
         ui.line_6.setGeometry(70, 460 + info_delta, wide_w, ui.line_6.height())
         ui.label_tag.setGeometry(70, 480 + info_delta, wide_w, 40)
@@ -898,10 +907,10 @@ class MyMAinWindow(QMainWindow):
             ("line_13", 660),
         ):
             getattr(ui, name).setGeometry(70, y + info_grow, narrow_w, getattr(ui, name).height())
-        # 右列（标签 x=310、值 x=350，按 ×scale 右移）：下划线右缘延伸到缩略图右缘
+        # 右列（标签 x=310、值 x=350，按 ×scale 右移）：下划线右缘同样贴 info_right
         right_label_x = int(310 * cover_scale)
         right_value_x = int(350 * cover_scale)
-        right_line_w = max(thumb_right - right_value_x, 60)
+        right_line_w = max(info_right - right_value_x, 60)
         for name, y in (
             ("label_31", 580),
             ("label_22", 530),

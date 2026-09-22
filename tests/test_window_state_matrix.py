@@ -471,10 +471,15 @@ def test_probe_main_tool_content(win, app):
     info_delta = cover_bottom - 380
     thumb_right = int(580 * cover_scale)
     tree_x = win.Ui.treeWidget_number.x()
+    info_right = max(tree_x - 13, thumb_right)
     assert win.Ui.label_outline.x() == 70, "简介左缘应保持设计 x=70（与左上角对齐）"
-    assert win.Ui.label_outline.x() + win.Ui.label_outline.width() == thumb_right, "简介下划线右缘应延伸到缩略图右缘"
+    assert win.Ui.label_outline.x() + win.Ui.label_outline.width() == info_right, (
+        "简介下划线右缘应延伸到统一右界 info_right"
+    )
     assert win.Ui.label_series.x() == int(350 * cover_scale), "右列应随 ×scale 右移"
-    assert win.Ui.label_series.x() + win.Ui.label_series.width() == thumb_right, "右列下划线右缘应延伸到缩略图右缘"
+    assert win.Ui.label_series.x() + win.Ui.label_series.width() == info_right, (
+        "右列下划线右缘应延伸到统一右界 info_right"
+    )
     # 信息区首行下移到封面框下方（不被放大后的黑框盖住）
     assert win.Ui.label_outline.y() == pytest.approx(430 + info_delta, abs=2), "信息区未按封面增高下移"
     assert win.Ui.label_outline.y() >= cover_bottom, "信息区首行仍在封面框内（#135 未修复）"
@@ -489,7 +494,7 @@ def test_probe_main_tool_content(win, app):
     # #135/#141 固定公式：左列 x 恒为设计值，右列 x 与下划线右缘由 ×scale 决定
     assert win.Ui.label_series.x() == int(350 * cover_scale), "右列 x 漂移"
     assert win.Ui.label_outline.x() == 70, "简介 x 漂移"
-    assert win.Ui.label_outline.x() + win.Ui.label_outline.width() == thumb_right, "简介右缘漂移"
+    assert win.Ui.label_outline.x() + win.Ui.label_outline.width() == info_right, "简介右缘漂移"
     assert win.Ui.label_outline.y() == pytest.approx(430 + info_delta, abs=2), "信息区 y 漂移"
     assert after_edit == max((e.width() for e in tool_page.findChildren(QLineEdit)), default=0), "工具页输入框宽漂移"
 
@@ -580,15 +585,16 @@ def test_cover_checkbox_right_and_clear_of_outline(win, app):
     assert ui.checkBox_cover.y() + ui.checkBox_cover.height() <= ui.line_6.y(), "勾选框与简介下划线重叠"
     # 简介行顶恒在封面框底下 50px（高度约束后 info_delta 恒取封面增量侧）
     assert ui.label_outline.y() >= cover_bottom + 50, f"简介行 {ui.label_outline.y()} 与封面框底 {cover_bottom} 重合"
-    # 场景 2：高窗口（1920x1040）→ y 贴封面框底、x 右缘贴缩略图右缘
+    # 场景 2：高窗口（1920x1040）→ y 贴封面框底、x 右缘贴统一右界 info_right
     win.resize(1920, 1040)
     app.processEvents()
-    scale = ui.page_main.width() / 820
+    scale = ui.label_poster.height() / 220
     thumb_right = int(580 * scale)
-    cover_bottom = int(160 + 220 * scale)
+    info_right = max(ui.treeWidget_number.x() - 13, thumb_right)
+    cover_bottom = ui.label_poster.y() + ui.label_poster.height()
     assert ui.checkBox_cover.y() == cover_bottom, f"高窗口未贴封面框底: {ui.checkBox_cover.y()} != {cover_bottom}"
-    assert ui.checkBox_cover.x() + ui.checkBox_cover.width() == pytest.approx(thumb_right, abs=2), (
-        f"勾选框右缘未贴缩略图右缘: {ui.checkBox_cover.x() + ui.checkBox_cover.width()} != {thumb_right}"
+    assert ui.checkBox_cover.x() + ui.checkBox_cover.width() == pytest.approx(info_right, abs=2), (
+        f"勾选框右缘未贴统一右界: {ui.checkBox_cover.x() + ui.checkBox_cover.width()} != {info_right}"
     )
 
 
@@ -985,14 +991,14 @@ def test_adaptive_window_sizes_matrix():
     """_adaptive_window_sizes 纯函数：常见屏幕档位的 (min_w, min_h, def_w, def_h)。"""
     from mdcx.controllers.main_window.init import _adaptive_window_sizes
 
-    # 1080p 无缩放（可用 1920x1040）：默认放大到 1280x920（cover_scale≈1.30）
-    assert _adaptive_window_sizes(1920, 1040) == (850, 650, 1280, 920)
+    # 1080p 无缩放（可用 1920x1040）：默认放大到 1280x956（cover_scale≈1.30）
+    assert _adaptive_window_sizes(1920, 1040) == (850, 700, 1280, 956)
     # 1080p 125% 缩放（逻辑 1536x864）：92ef2437 的原始诉求——不锁死 700，仍可缩到 648
-    assert _adaptive_window_sizes(1536, 864) == (850, 648, 1280, 777)
+    assert _adaptive_window_sizes(1536, 864) == (850, 648, 1280, 794)
     # 小屏（1024x600 可用）：默认/最小均按比例收，首启不占满
-    assert _adaptive_window_sizes(1024, 600) == (614, 450, 921, 540)
+    assert _adaptive_window_sizes(1024, 600) == (614, 450, 921, 552)
     # 超小屏下限钳制：不得低于 400x300
-    assert _adaptive_window_sizes(500, 350) == (400, 300, 450, 315)
+    assert _adaptive_window_sizes(500, 350) == (400, 300, 450, 322)
 
 
 def test_main_window_applies_adaptive_sizes(win, app):
@@ -1152,12 +1158,20 @@ def test_main_page_cover_scales_proportionally_when_maximized(win, app):
 
     assert ui.label_poster.width() == int(156 * scale), f"封面框宽未按 scale 放大: {ui.label_poster.width()}"
     assert ui.label_poster.height() == int(220 * scale), f"封面框高未按 scale 放大: {ui.label_poster.height()}"
-    assert ui.label_poster.x() == int(80 * scale), f"封面框 x 未按 scale 平移: {ui.label_poster.x()}"
+    # 2026-09-22：图框整体右移贴统一右界 info_right（树左缘-13 与缩略图右缘取大）
+    tree_w = max(int(202 * scale), 202)
+    tree_x = max(stacked_w - tree_w - 18, 300)
+    info_right = max(tree_x - 13, int(580 * scale))
+    cover_extra = info_right - int(580 * scale)
+    assert ui.label_poster.x() == int(80 * scale) + cover_extra, f"封面框 x 未按 scale+右界平移: {ui.label_poster.x()}"
     assert ui.label_poster.y() == 160, f"封面框 y 应保留设计 160: {ui.label_poster.y()}"
 
     assert ui.label_thumb.width() == int(328 * scale), f"缩略框宽未按 scale 放大: {ui.label_thumb.width()}"
     assert ui.label_thumb.height() == int(220 * scale), f"缩略框高未按 scale 放大: {ui.label_thumb.height()}"
-    assert ui.label_thumb.x() == int(252 * scale), f"缩略框 x 未按 scale 平移: {ui.label_thumb.x()}"
+    assert ui.label_thumb.x() == int(252 * scale) + cover_extra, f"缩略框 x 未按 scale+右界平移: {ui.label_thumb.x()}"
+    assert ui.label_thumb.x() + ui.label_thumb.width() == pytest.approx(info_right, abs=1), (
+        "缩略框右缘未贴统一右界 info_right"
+    )
 
     assert ui.label_poster_size.width() == int(411 * scale), f"封面尺寸文字宽未按 scale: {ui.label_poster_size.width()}"
     assert ui.label_thumb_size.width() == int(201 * scale), f"缩略尺寸文字宽未按 scale: {ui.label_thumb_size.width()}"
