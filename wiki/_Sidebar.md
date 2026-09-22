@@ -1,11 +1,23 @@
 - [[Home|🏠 首页]]
-- [[新手三分钟上手|🚀 新手三分钟上手]]
+- **入门**
+- [[新手三分钟上手|🚀 三分钟上手]]
+- [[安装与运行|📦 安装与运行]]
+- [[刮削基础|🎬 刮削基础]]
+- **核心功能**
+- [[模式与刮削策略|🎯 模式与策略]]
+- [[支持站点与图源|🌐 站点与图源]]
+- [[图片下载的封面优化|🖼️ 图片与封面]]
+- [[命名与目录整理|🏷️ 命名与整理]]
+- [[翻译设置|🈶 翻译设置]]
+- [[网络与代理设置|🔌 网络与代理]]
+- **集成与进阶**
+- [[Emby 集成与演员管理|🧩 Emby 与演员]]
+- [[进阶技巧|⚙️ 进阶技巧]]
 - [[常见问题-FAQ|❓ 常见问题 FAQ]]
 ---
-**进阶参考**（主仓库 docs/ 目录）
-- [完整功能说明](https://github.com/cdlongbow/mdcx-diy/blob/main/docs/FEATURES.md)
-- [配置逐项详解](https://github.com/cdlongbow/mdcx-diy/blob/main/docs/CONFIGURATION.md)
-- [快速上手文档](https://github.com/cdlongbow/mdcx-diy/blob/main/docs/QUICKSTART.md)
+**开发相关**（主仓库 docs/ 目录）
+- [功能全景](https://github.com/cdlongbow/mdcx-diy/blob/main/docs/FEATURES.md)
+- [配置逐项参考](https://github.com/cdlongbow/mdcx-diy/blob/main/docs/CONFIGURATION.md)
 - [开发文档](https://github.com/cdlongbow/mdcx-diy/blob/main/docs/DEVELOPMENT.md)
 - [更新日志](https://github.com/cdlongbow/mdcx-diy/blob/main/docs/changelog.md)
 ---

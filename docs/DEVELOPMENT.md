@@ -180,7 +180,7 @@ ASIN 数据库（Excel `amazon_asin_database.xlsx`），搜索到的 ASIN 与番
 
 - **异步 HTTP**：httpx（默认）+ curl-cffi（指纹伪装）
 - **浏览器指纹**：curl-cffi 模拟浏览器 TLS 指纹，默认池 7 种画像（Chrome 124/131/136 Win、Chrome 136 Mac、Firefox 133/135 Win、Safari 17.2 iOS）按请求轮换；Amazon 刮削用纯桌面池 6 种（不含 Safari iOS，避免偶发返回移动版页面）
-- **限流**：并发数与全局线程延时控制请求节奏；Amazon 等高风控源使用自适应退避（`AdaptiveRequestThrottle`，命中 429 自动降速冷却），失败指数退避重试
+- **限流**：并发数与全局线程延时控制请求节奏；Amazon 等高风控源使用自适应退避（`AdaptiveRequestThrottle`，命中 429 自动降速冷却），失败指数退避重试；异步客户端（`web_async`）对 429/503 统一解析 `Retry-After`（秒数或 HTTP-date）做 per-host 冷却（上限 300s，并发任务共享同一截止点，期间新请求发出前等待）；维基域名另有 5 req/s + 180 req/min 双桶限速
 - **Cloudflare Bypass**：通过 `trawl_adapter.py` 把请求翻译给外部 CF 服务（TRAWL `/scrape` 或 FlareSolverr `/v1`），自动绕过 CF 防护页；JavLibrary 额外支持 Selenium+Edge headless fallback（`selenium_adapter.py`，cf_selenium_bypass 默认开启）
 - **代理**：HTTP/HTTPS/SOCKS5，按"走代理网站"域名路由（默认含 amazon.co.jp, m.media-amazon.com, xcity.jp, minnano-av.com, avbase.net, javbus.com, javdb.com, javlibrary.com, r18.dev, mgstage.com, prestige-av.com, seesaawiki.jp, avsox.click, avsox.com, avmoo.shop, avmoo.com, avheat.shop, avheat.com, heyzo.com, caribbeancom.com, 1pondo.tv, pacopacomama.com, 10musume.com, mywife.cc, github.com, raw.githubusercontent.com, google.com, missav.ws, missav.ai, missav.live, aventertainments.com, javfree.me, 7mmtv.sx, 7tv022.com 共 34 域）
 
@@ -229,13 +229,13 @@ ASIN 数据库（Excel `amazon_asin_database.xlsx`），搜索到的 ASIN 与番
 ## 测试
 
 - **框架**：pytest + pytest-asyncio
-- **标记**：`network`（需要联网的测试，默认跳过）、`integration`（集成测试，默认跳过）
+- **标记**：`network`（需要真实联网的测试，CI 以 `-m "not network"` 跳过）、`integration`（针对线上站点的真实抓取类测试，tests/crawlers/ 整目录标注；目录内单测已由 fixture 离线化，CI 现行过滤不含该标记）
 - **运行**：
   ```bash
   uv run pytest tests/                          # 全部测试
   uv run pytest tests/ --tb=short -m "not network" -x  # 仅不联网测试
   ```
-- **CI 平台分工**：Linux CI 执行 ruff、mypy、完整离线测试、数据库检查、线程安全检查和 UI 布局检查；Windows CI 在 `windows-latest` runner 上执行同一组离线 pytest，覆盖 Windows 路径和文件系统条件分支。Release 在 macOS、Windows 和 Ubuntu runner 分别构建 DMG、EXE 和 x86_64 Linux 单文件程序；手动工作流 `build-windows.yml` 与 `build-linux.yml` 可单独验证相应 PyInstaller 产物。
+- **CI 平台分工**：Linux CI 执行 ruff、mypy、完整离线测试、数据库检查和线程安全检查（`check_ui_layout` 已移出门禁，仅作手工诊断）；Windows CI 在 `windows-latest` runner 上执行同一组离线 pytest，覆盖 Windows 路径和文件系统条件分支。Release 在 macOS、Windows 和 Ubuntu runner 分别构建 DMG、EXE 和 x86_64 Linux 单文件程序；手动工作流 `build-windows.yml` 与 `build-linux.yml` 可单独验证相应 PyInstaller 产物。
 - **覆盖**：tests/crawlers/ 爬虫测试、tests/core/ 核心测试、NFO 测试、配置测试、`tests/test_ui_structure.py`（UI 结构）、`tests/test_actor_clean.py`（演员数据语义清洗）等
 - **演员数据清洗测试**（`tests/test_actor_clean.py`）：验证 `mdcx/utils/actor_clean.py` 对名字/别名字段的语义清洗——系列标签/年份/国籍/事务所标注剥离、作品标题剔除、悬空斜杠修复、占位符识别置空，同时确保罗马音/日文映射、读音、韩文别名等合法内容不被误伤。新数据写入（刮削写入 `update_actor_db_row`）前统一经此模块清洗
 - **演员库完整性测试**（`tests/test_check_actor_db.py`）：验证 `scripts/check_actor_db.py` 对出厂 `actor_database.xlsx` 的完整性检查——jp 重复、tmdbid 重复、url 错配、**孤儿 hyperlink**（XML 层解析 `<c>` 定义集合与 `<hyperlink>` ref 差集）等。`clean_actor_db_non_actors.py` 删行后按 cell 实际坐标重建超链接，配合保存后校验防止孤儿 hyperlink 进入仓库
@@ -244,8 +244,8 @@ ASIN 数据库（Excel `amazon_asin_database.xlsx`），搜索到的 ASIN 与番
   - 用户控件 objectName 唯一（重复控件是无用残留的信号）
   - `MDCx.py` 与 `MDCx.ui` 同步：用 pyuic6 重编译 + ruff format 后与仓库版文本一致，防止只改 `.py` 不同步 `.ui` 或改 `.ui` 后忘重编译
   - **规则**：改动 UI 一律先改 `MDCx.ui`，再运行
-    `/workspace/.venv/bin/python3 -m PyQt6.uic.pyuic mdcx/views/MDCx.ui -o mdcx/views/MDCx.py`
-    及 `uv run ruff format mdcx/views/MDCx.py`，不要手工改 `MDCx.py`
+    `uv run python -m PyQt6.uic.pyuic mdcx/views/MDCx.ui -o mdcx/views/MDCx.py`
+    及 `scripts/fix_qt_enums.py`、`uv run ruff format mdcx/views/MDCx.py`，不要手工改 `MDCx.py`
 - **演员工具页按钮一致性测试**（`tests/test_actor_db_button_consistency.py`）：纯静态校验（无需 Qt 运行时），锁定 `_ACTOR_DB_IDLE_TEXT_MAP` ↔ `MDCx.ui` 中控件 ↔ `MyMainWindow` 顶层 `pyqtSignal(str)` 声明 ↔ `actor_db_finished` 信号契约四层一致。按钮改名、漏声明信号、map 漏收等漂移在 CI 即可捕获
 - **actor_db 并发信号契约**：`actor_db_finished = pyqtSignal(str)` 带 task_id；所有 `_run_actor_db_*` 走 `_run_actor_db_async(btn_attr, busy_text, log_prefix, coro_factory)` 通用模板，防重入依赖 `_actor_db_running` 集合，跨任务误恢复由 `reset_buttons_status` 与 `_on_actor_db_finished` 共同规避
 - **推送前自检**：修改代码后先运行 `uv run quick-check`（ruff format/check + mypy）；提交推送前运行 `uv run check --skip-hook-install`（ruff format/check + mypy + pytest + check_thread_safety；出厂演员库/信息库或其校验脚本有改动时才跑 `check_actor_db` / `check_info_db`）。`scripts/check_ui_layout.py` 只作手工诊断（warning 不阻断），结构约束由 `tests/test_ui_structure.py` 锁定。
@@ -254,7 +254,7 @@ ASIN 数据库（Excel `amazon_asin_database.xlsx`），搜索到的 ASIN 与番
 
 - **格式化**：ruff（行宽 120，启用 isort/pyupgrade/flake8）
 - **类型检查**：mypy（全项目零 `disable_error_code`；`mdcx/controllers/main_window/init.py`、`load_config.py`、`views/`、`gen/` 等豁免，CI `ci.yaml` 强制执行）；pyright 仅在 `pyproject.toml` 中保留配置，未纳入 CI 门禁
-- **Git 钩子**：项目不要求安装 pre-commit；统一使用 `uv run quick-check` 和 `uv run check --skip-hook-install` 完成检查
+- **Git 钩子**：钩子脚本入库于 `.githooks/`（`pre-push` 推送前自动跑全量 `check`；`prepare-commit-msg` 按 git config 的 `coauthor.*` 追加署名），`uv run check`（不带 `--skip-hook-install`）会自动执行 `git config core.hooksPath .githooks` 完成启用；该配置属本地 git config，环境重置后需重新执行一次（`git config core.hooksPath` 查当前值）。项目不要求安装 pre-commit
 - **检查和修复**：
   ```bash
   uv run ruff check .          # 代码检查
@@ -266,10 +266,11 @@ ASIN 数据库（Excel `amazon_asin_database.xlsx`），搜索到的 ASIN 与番
 
 使用 PyInstaller 打包，入口文件为 `main.py`。正式 Release 会构建 macOS ARM64 DMG、Windows x86_64 EXE 与 Linux x86_64 单文件程序。
 
-Linux 手动构建依赖 Ubuntu 的 Qt 图形运行库，完整列表见 [INSTALL.md](INSTALL.md#linux-额外步骤)。构建前安装锁定依赖，再执行：
+Linux 手动构建依赖 Ubuntu 的 Qt 图形运行库，完整列表见 [INSTALL.md](INSTALL.md#linux-额外步骤)。构建前安装锁定依赖；Windows/Linux **一体包内嵌超分工具**，打包前必须先拉取（`scripts/build.py` 缺目录会硬失败，详见 [CONFIGURATION.md](CONFIGURATION.md) 海报超分节），再执行：
 
 ```bash
 uv sync --locked --all-extras --dev
+uv run python -m scripts.fetch_sr_tools --platform current
 uv run build --debug
 ```
 
