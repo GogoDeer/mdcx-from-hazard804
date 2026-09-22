@@ -194,6 +194,7 @@ highdpi_passthrough
 scripts/local/
 AGENTS.md
 uv.toml
+.planning/scratch/
 
 # 测试文件（非必需，本地开发用）
 test_*.xlsx
