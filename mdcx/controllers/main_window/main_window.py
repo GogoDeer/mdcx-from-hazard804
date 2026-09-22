@@ -627,11 +627,12 @@ class MyMAinWindow(QMainWindow):
         # 批量保存用法说明高度贴合换行行数（2026-09-22 用户报告：文字被裁 +
         # 按钮与文字间空白）。.ui 写死 88 与实际行数脱钩——窄窗口/DPI 放大时
         # 文字 4 行超出被裁、行数少时垂直居中留空白。改 AlignTop + 按当前宽度
-        # heightForWidth 现算（下限 88 由 .ui minimumSize 保底）。
+        # heightForWidth 现算后钉固定高（下限 88）：只抬 minimum 的写法在长文
+        # 换短文时布局不会回收已撑高的当前高度，Windows 上残留长文高度。
         hint = ui.label_nfo_lib_batch_hint
         hint_h = hint.heightForWidth(hint.width())
         if hint_h > 0:
-            hint.setMinimumHeight(max(hint_h, 88))
+            hint.setFixedHeight(max(hint_h, 88))
 
     def resizeEvent(self, a0):
         # 全局 UI 为绝对定位布局（上游遗留），centralwidget 无布局管理器，

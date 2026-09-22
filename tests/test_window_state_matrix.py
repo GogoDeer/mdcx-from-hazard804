@@ -673,8 +673,8 @@ def test_nfo_lib_batch_hint_fits_wrapped_lines(win, app):
     assert hint.height() >= need, f"hint 高度 {hint.height()} < 换行所需 {need}，文字会被裁"
 
     # 还原短文本：高度=下限 88 与当前宽度换行实测高取大。fontMetrics 独立重算而非
-    # 复制生产 heightForWidth（非同源恒真）；Windows CI 字体/DPI 下换行高可 >88，
-    # 恒定断言 88 属平台敏感（8912993d 的 CI 红即此形态），真实窗口由双拍补同步自愈。
+    # 复制生产 heightForWidth（非同源恒真）；生产层 setFixedHeight 随内容贴合——
+    # 只抬 minimum 的写法长文换短文时布局不回收当前高，Windows CI 红即此形态。
     hint.setText("用法说明")
     win._sync_nfo_lib_form_fields()
     app.processEvents()
