@@ -1023,6 +1023,39 @@ def test_main_window_applies_adaptive_sizes(win, app):
 # ============ 议题 #102：四项 UI 交互模拟验证 ============
 
 
+def test_restore_window_resyncs_layout(win, app, monkeypatch):
+    """用户实测（2026-09-22）：Windows 原生边框首帧错位「最小化再还原立即自愈」。
+
+    把这条验证有效的路径内置：WindowStateChange 且还原（非最小化）时补跑
+    _sync_page_layouts。最小化瞬间（进入 minimized）不补（几何无意义）；
+    托盘隐藏走 hide() 不改 windowState，不触发。
+    """
+    calls = []
+    monkeypatch.setattr(win, "_sync_page_layouts", lambda: calls.append(1))
+    win.show()
+    app.processEvents()
+    calls.clear()
+
+    # 最小化：进入 minimized 态不补同步
+    win.showMinimized()
+    app.processEvents()
+    assert win.isMinimized()
+    assert calls == [], "最小化瞬间不应补同步"
+
+    # 还原：补同步恰好一次（changeEvent → singleShot(0) → 事件循环执行）
+    win.showNormal()
+    app.processEvents()
+    assert calls == [1], f"还原后未补同步: {len(calls)} 次"
+
+    # 托盘隐藏（hide()，windowState 不变）不触发补同步
+    calls.clear()
+    win.hide()
+    app.processEvents()
+    assert calls == [], "hide() 不应触发补同步"
+    win.show()
+    app.processEvents()
+
+
 def test_minimized_main_not_popped_on_app_activate(win, app):
     """议题 #102-①：主窗最小化后，应用激活事件（Emby 演员管理器任意操作/切任务
     让 app 重新激活）不得把主窗弹出前台。

@@ -555,9 +555,11 @@ class MyMAinWindow(QMainWindow):
         self.resize(def_w, def_h)
         # 用户报告（2026-09-22，Windows 原生边框）：首次显示后设置页浮框等绝对定位
         # 控件短暂滞留旧几何、隔一会儿才自愈——与 #78「原生边框 resize 时序错过布局
-        # 更新」同族。resize 触发的 resizeEvent 在首帧时序下可能被吞，事件循环空转
-        # 一轮后强制补同步一次（幂等），根除首帧错位。
+        # 更新」同族。singleShot(0) 一拍补同步实测不足以覆盖原生层对窗口尺寸的最终
+        # 调整（用户反馈无效），改多拍：0ms 兜 Qt 层时序、300ms 兜原生几何稳定后
+        # 的最终态（幂等，多次调用无害）；窗口还原态补同步见 changeEvent。
         QTimer.singleShot(0, self._sync_page_layouts)
+        QTimer.singleShot(300, self._sync_page_layouts)
 
     # 用于计算窗口各子页面初始设计尺寸，被 resizeEvent 用于按比例缩放
     _BASE_W = 1040
@@ -1049,6 +1051,14 @@ class MyMAinWindow(QMainWindow):
         ):
             self.setWindowFlag(Qt.WindowType.FramelessWindowHint, True)  # 隐藏边框
             self.show()
+
+        # 用户实测（2026-09-22）：Windows 原生边框下首帧错位「最小化再还原立即自愈」——
+        # 还原会触发 WindowStateChange + 原生 WM_SIZE 往返，在几何稳定态重跑 resizeEvent。
+        # 把这条验证有效的路径内置：还原（非最小化态）时补同步一次，等效于用户手动最小化还原。
+        # 托盘隐藏走 hide() 不改 windowState，不会误触发；仅补同步不操控窗口状态，
+        # 符合「窗口状态汇聚点审计」纪律。
+        if a0.type() == QEvent.Type.WindowStateChange and not self.isMinimized():
+            QTimer.singleShot(0, self._sync_page_layouts)
 
         # activeAppName = AppKit.NSWorkspace.sharedWorkspace().activeApplication()['NSApplicationName'] # 活动窗口的标题
 
