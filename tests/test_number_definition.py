@@ -248,6 +248,43 @@ async def test_get_file_info_marks_restored_as_umr_case_insensitive():
 @pytest.mark.parametrize(
     "file_path",
     [
+        Path("D:/test/ABF-131-CRACKED.mp4"),
+        Path("D:/test/ABF-131.CRACKED.mp4"),
+        Path("D:/test/ABF-131_CRACKED.mp4"),
+        Path("D:/test/ABF-131.cracked.mp4"),
+    ],
+)
+async def test_get_file_info_marks_cracked_as_umr_case_insensitive(file_path: Path):
+    old_file_mode = Flags.file_mode
+    Flags.file_mode = FileMode.Default
+    try:
+        file_info = await get_file_info_v2(file_path, copy_sub=False)
+    finally:
+        Flags.file_mode = old_file_mode
+
+    assert file_info.number == "ABF-131"
+    assert file_info.destroyed == manager.config.umr_style
+    assert file_info.mosaic == "无码破解"
+
+
+@pytest.mark.asyncio
+async def test_get_file_info_does_not_treat_uncracked_as_umr_marker():
+    old_file_mode = Flags.file_mode
+    Flags.file_mode = FileMode.Default
+    try:
+        file_info = await get_file_info_v2(Path("D:/test/ABF-131-uncracked.mp4"), copy_sub=False)
+    finally:
+        Flags.file_mode = old_file_mode
+
+    assert file_info.number == "ABF-131"
+    assert file_info.destroyed == ""
+    assert file_info.mosaic == ""
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "file_path",
+    [
         Path("D:/test/JUR-615-UC4K.mp4"),
         Path("D:/test/JUR-615-UC-4K.mp4"),
         Path("D:/test/JUR-615-U4K.mp4"),

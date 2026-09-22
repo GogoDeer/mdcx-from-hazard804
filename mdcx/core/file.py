@@ -61,6 +61,10 @@ def _has_umr_suffix_marker(file_name: str, movie_number: str) -> bool:
     return bool(re.search(rf"(?<![A-Z0-9])U(?:C)?(?=(?:{compact_definition}|[-_.\s\]\)]|$))", normalized_name))
 
 
+def _has_cracked_marker(file_path_lower: str) -> bool:
+    return bool(re.search(r"(?<![a-z0-9])cracked(?![a-z0-9])", file_path_lower))
+
+
 async def creat_folder(
     other: OtherInfo,
     json_data: BaseCrawlerResult,
@@ -547,6 +551,7 @@ async def get_file_info_v2(file_path: Path, copy_sub: bool = True) -> FileInfo:
             or ".restored" in file_path_lower
             or "破解" in file_path_str
             or "克破" in file_path_str
+            or _has_cracked_marker(file_path_lower)
             or (umr_style_lower and umr_style_lower in file_path_lower)
             or _has_umr_suffix_marker(file_name, movie_number)
         ):
