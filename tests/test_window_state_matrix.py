@@ -672,11 +672,18 @@ def test_nfo_lib_batch_hint_fits_wrapped_lines(win, app):
     )
     assert hint.height() >= need, f"hint 高度 {hint.height()} < 换行所需 {need}，文字会被裁"
 
-    # 还原短文本：回落到下限 88
+    # 还原短文本：高度=下限 88 与当前宽度换行实测高取大。fontMetrics 独立重算而非
+    # 复制生产 heightForWidth（非同源恒真）；Windows CI 字体/DPI 下换行高可 >88，
+    # 恒定断言 88 属平台敏感（8912993d 的 CI 红即此形态），真实窗口由双拍补同步自愈。
     hint.setText("用法说明")
     win._sync_nfo_lib_form_fields()
     app.processEvents()
-    assert hint.height() == 88, f"短文本应回落到下限 88: {hint.height()}"
+    need_short = (
+        hint.fontMetrics()
+        .boundingRect(QRect(0, 0, hint.width(), 10_000_000), int(Qt.TextFlag.TextWordWrap), "用法说明")
+        .height()
+    )
+    assert hint.height() == max(88, need_short), f"短文本高度未贴合: {hint.height()} != max(88, {need_short})"
 
 
 def test_switch_to_pages_after_maximize_content_visible(win, app):
