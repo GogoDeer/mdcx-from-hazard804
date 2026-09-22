@@ -1,11 +1,13 @@
 # 定期刷新「海报超分」工具缓存，供打包工作流复用。
 #
 # 工具二进制不入库：打包时由 scripts/fetch_sr_tools.py 从官方 GitHub Release 拉取，
-# 校验 sha256 后解压到 build/sr_tools。这里按月预热 actions/cache，
+# 校验 sha256 后解压到 build/sr_tools。这里每周预热 actions/cache，
 # 让 release.yml / package-trawl.yml 打包时免下载、提速构建。
 #
-# 刷新失败（上游重新打包导致 sha256 不匹配）会让作业变红并保留旧缓存，
-# 避免坏包扩散到发布产物。
+# 缓存 key 携带 `mdcx/core/super_resolution.py` 的内容指纹：URL/基准一变，key 自动
+# 轮换（actions/cache 同 key 永不覆写），首个构建 cache miss 重新下载并校验，sha256
+# 不匹配直接红——坏包进不了 cache 也进不了发布产物。若固定 key，升级基准后旧缓存会
+# 被 is_ready 静默命中，永远打旧版工具（本次审查发现的缺陷形态）。
 
 name: Update SR tools cache
 
@@ -59,7 +61,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: build/sr_tools
-          key: sr-tools-${{ matrix.build }}
+          key: sr-tools-${{ matrix.build }}-${{ hashFiles('mdcx/core/super_resolution.py') }}
 
       - name: Refresh SR tools
         shell: bash

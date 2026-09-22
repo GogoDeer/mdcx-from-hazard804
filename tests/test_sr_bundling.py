@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import sys
 import zipfile
 from io import BytesIO
@@ -176,3 +177,23 @@ def test_packaging_workflows_fetch_sr_tools_before_build():
         assert fetch_idx >= 0, f"{name} 缺少 scripts.fetch_sr_tools"
         assert build_idx >= 0, f"{name} 缺少 scripts/build.py"
         assert fetch_idx < build_idx, f"{name} 必须先 fetch_sr_tools 再 build.py"
+
+
+def test_sr_tools_cache_keys_rotate_with_baseline_fingerprint():
+    """SR 工具缓存 key 必须携带基准文件指纹，防止旧缓存静默打旧版工具。
+
+    actions/cache 对已存在的 key 永不覆写，而 fetch 的 is_ready 命中后不校验 sha256：
+    固定 key 时升级 `_TOOL_DOWNLOAD_URLS`/`_TOOL_CHECKSUMS` 后所有工作流（含预热任务）
+    都命中旧缓存并幂等跳过，新基准永远进不了产物（2026-09-22 审查实证形态）。
+    """
+    root = Path(".github/workflows")
+    pattern = re.compile(r"path:\s*build/sr_tools\s*\n\s*key:\s*(.+)")
+    seen_files = set()
+    for name in ("ci.yaml", "release.yml", "build-windows.yml", "build-linux.yml", "update-sr-tools.yml"):
+        text = (root / name).read_text(encoding="utf-8")
+        keys = pattern.findall(text)
+        assert keys, f"{name} 未找到 build/sr_tools 的缓存 key 配置"
+        seen_files.add(name)
+        for key in keys:
+            assert "hashFiles('mdcx/core/super_resolution.py')" in key, f"{name} 的 sr 工具缓存 key 未随基准轮换: {key}"
+    assert seen_files == {"ci.yaml", "release.yml", "build-windows.yml", "build-linux.yml", "update-sr-tools.yml"}

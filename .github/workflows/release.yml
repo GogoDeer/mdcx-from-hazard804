@@ -117,13 +117,13 @@ jobs:
         run: uv sync --locked --all-extras --dev
 
       # 超分工具一体包：Windows/Linux 打包期内嵌（macOS 不内嵌，保持首次使用按需下载）。
-      # 缓存由 update-sr-tools.yml 定期刷新；命中时 fetch 脚本幂等跳过下载，未命中则直接拉取。
+      # 缓存 key 带基准文件指纹，基准更新即轮换；命中时 fetch 脚本幂等跳过下载，未命中则直接拉取。
       - name: Restore SR tools cache (Windows/Linux)
         if: ${{ matrix.build == 'windows' || matrix.build == 'linux' }}
         uses: actions/cache@v4
         with:
           path: build/sr_tools
-          key: sr-tools-${{ matrix.build }}
+          key: sr-tools-${{ matrix.build }}-${{ hashFiles('mdcx/core/super_resolution.py') }}
 
       - name: Fetch SR tools (Windows/Linux)
         if: ${{ matrix.build == 'windows' || matrix.build == 'linux' }}

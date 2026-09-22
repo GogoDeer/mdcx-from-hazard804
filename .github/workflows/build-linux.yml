@@ -37,7 +37,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: build/sr_tools
-          key: sr-tools-linux
+          key: sr-tools-linux-${{ hashFiles('mdcx/core/super_resolution.py') }}
 
       - name: Fetch SR tools
         env:

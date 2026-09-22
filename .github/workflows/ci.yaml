@@ -180,7 +180,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: build/sr_tools
-          key: sr-tools-windows
+          key: sr-tools-windows-${{ hashFiles('mdcx/core/super_resolution.py') }}
 
       - name: Fetch SR tools
         if: steps.changes.outputs.code_changed == 'true'
