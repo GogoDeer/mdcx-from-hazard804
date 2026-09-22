@@ -521,6 +521,103 @@ def test_runtime_row_follows_right_column_on_maximize(win, app):
     )
 
 
+def test_tool_icon_row_follows_tree_left_edge(win, app):
+    """用户报告 2026-09-22：工具图标排（编辑NFO/文件夹/播放/右键菜单）不靠右。
+
+    设计右缘 587 紧贴结果树设计左缘 600；窗口放大后树左缘右移，图标排须按
+    tree_extra = tree_x - 600 同步平移（间距 40 不变）；窄窗口钳回设计位，双向幂等。
+    """
+    win.resize(1040, 760)
+    win.show()
+    app.processEvents()
+    win.resize(1920, 1040)
+    app.processEvents()
+
+    tree_x = win.Ui.treeWidget_number.x()
+    extra = max(tree_x - 600, 0)
+    assert extra > 0, "1920 宽下树左缘应大于设计 600"
+    rows = [
+        ("pushButton_open_nfo", 427),
+        ("pushButton_open_folder", 467),
+        ("pushButton_play", 507),
+        ("pushButton_right_menu", 547),
+    ]
+    for name, design_x in rows:
+        btn = getattr(win.Ui, name)
+        assert btn.x() == design_x + extra, f"{name} 未随树左缘右移: {btn.x()} != {design_x + extra}"
+    # 右键菜单按钮右缘保持「树左缘 - 13」的设计间距
+    assert win.Ui.pushButton_right_menu.x() + win.Ui.pushButton_right_menu.width() <= tree_x
+
+    # 缩回窄窗口（page < 设计 820 → extra 钳 0），回设计位（幂等）
+    win.resize(1000, 760)
+    app.processEvents()
+    for name, design_x in rows:
+        assert getattr(win.Ui, name).x() == design_x, f"{name} 缩回后未复位"
+
+
+def test_cover_checkbox_right_and_clear_of_outline(win, app):
+    """用户报告 2026-09-22：显示封面勾选框压在简介栏上且不可点。
+
+    ① x 右缘贴缩略图框右缘（thumb_right-90 等比跟随）；② y 贴封面框底
+    cover_bottom，矮窗口 info_delta 被夹时钳到 380+info_delta，绝不与简介行
+    （430+delta）及下划线（460+delta）重叠；③ .ui zorder 中勾选框在
+    label_thumb/line_6 之上（钳到框内底部时仍可点击）。
+    """
+    win.resize(1040, 760)
+    win.show()
+    app.processEvents()
+
+    # 场景 1：宽而矮（1280x740 → cover_scale 受高度约束，封面少放大、信息区不重叠）
+    win.resize(1280, 740)
+    app.processEvents()
+    ui = win.Ui
+    # cover_bottom 从封面框实际几何反推（y=160 固定），与实现公式解耦
+    cover_bottom = ui.label_poster.y() + ui.label_poster.height()
+    assert ui.checkBox_cover.y() == cover_bottom, f"勾选框未贴封面框底: {ui.checkBox_cover.y()} != {cover_bottom}"
+    assert ui.checkBox_cover.y() + ui.checkBox_cover.height() <= ui.label_outline.y(), (
+        f"勾选框底 {ui.checkBox_cover.y() + ui.checkBox_cover.height()} 与简介行顶 {ui.label_outline.y()} 重叠"
+    )
+    assert ui.checkBox_cover.y() + ui.checkBox_cover.height() <= ui.line_6.y(), "勾选框与简介下划线重叠"
+    # 简介行顶恒在封面框底下 50px（高度约束后 info_delta 恒取封面增量侧）
+    assert ui.label_outline.y() >= cover_bottom + 50, f"简介行 {ui.label_outline.y()} 与封面框底 {cover_bottom} 重合"
+    # 场景 2：高窗口（1920x1040）→ y 贴封面框底、x 右缘贴缩略图右缘
+    win.resize(1920, 1040)
+    app.processEvents()
+    scale = ui.page_main.width() / 820
+    thumb_right = int(580 * scale)
+    cover_bottom = int(160 + 220 * scale)
+    assert ui.checkBox_cover.y() == cover_bottom, f"高窗口未贴封面框底: {ui.checkBox_cover.y()} != {cover_bottom}"
+    assert ui.checkBox_cover.x() + ui.checkBox_cover.width() == pytest.approx(thumb_right, abs=2), (
+        f"勾选框右缘未贴缩略图右缘: {ui.checkBox_cover.x() + ui.checkBox_cover.width()} != {thumb_right}"
+    )
+
+
+def test_cover_checkbox_zorder_above_thumb_and_lines():
+    """勾选框 zorder 必须在 label_thumb / label_poster / line_6 之后（同格重叠时可点击）。"""
+    import xml.etree.ElementTree as ET
+
+    root = ET.parse("mdcx/views/MDCx.ui").getroot()
+    zorders = [el.text for el in root.iter("zorder")]
+    assert "checkBox_cover" in zorders
+    cover_idx = zorders.index("checkBox_cover")
+    for later in ("label_thumb", "label_poster", "line_6"):
+        assert cover_idx > zorders.index(later), f"checkBox_cover 应在 {later} 之后（上层）"
+
+
+def test_nfo_lib_batch_hint_min_height_fits_three_lines():
+    """用户报告 2026-09-22：批量保存按钮下用法说明 3 行文字被裁。
+
+    文案加长后 64px 装不下三行，.ui minimumSize 高度须 ≥88。
+    """
+    import xml.etree.ElementTree as ET
+
+    root = ET.parse("mdcx/views/MDCx.ui").getroot()
+    label = root.find(".//widget[@name='label_nfo_lib_batch_hint']")
+    assert label is not None
+    height = label.find("property[@name='minimumSize']/size/height")
+    assert height is not None and int(height.text) >= 88
+
+
 def test_switch_to_pages_after_maximize_content_visible(win, app):
     """最大化后切到三个页面，内容尺寸正确（复现用户切页观察）."""
 
@@ -888,14 +985,14 @@ def test_adaptive_window_sizes_matrix():
     """_adaptive_window_sizes 纯函数：常见屏幕档位的 (min_w, min_h, def_w, def_h)。"""
     from mdcx.controllers.main_window.init import _adaptive_window_sizes
 
-    # 1080p 无缩放（可用 1920x1040）：默认放大到 1280x860（cover_scale≈1.30）
-    assert _adaptive_window_sizes(1920, 1040) == (850, 650, 1280, 860)
+    # 1080p 无缩放（可用 1920x1040）：默认放大到 1280x920（cover_scale≈1.30）
+    assert _adaptive_window_sizes(1920, 1040) == (850, 650, 1280, 920)
     # 1080p 125% 缩放（逻辑 1536x864）：92ef2437 的原始诉求——不锁死 700，仍可缩到 648
-    assert _adaptive_window_sizes(1536, 864) == (850, 648, 1280, 734)
+    assert _adaptive_window_sizes(1536, 864) == (850, 648, 1280, 777)
     # 小屏（1024x600 可用）：默认/最小均按比例收，首启不占满
-    assert _adaptive_window_sizes(1024, 600) == (614, 450, 921, 510)
+    assert _adaptive_window_sizes(1024, 600) == (614, 450, 921, 540)
     # 超小屏下限钳制：不得低于 400x300
-    assert _adaptive_window_sizes(500, 350) == (400, 300, 450, 300)
+    assert _adaptive_window_sizes(500, 350) == (400, 300, 450, 315)
 
 
 def test_main_window_applies_adaptive_sizes(win, app):

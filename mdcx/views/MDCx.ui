@@ -1206,7 +1206,6 @@
           <zorder>label_31</zorder>
           <zorder>label_tag</zorder>
           <zorder>label_33</zorder>
-          <zorder>checkBox_cover</zorder>
           <zorder>label_22</zorder>
           <zorder>label_runtime</zorder>
           <zorder>line_6</zorder>
@@ -1219,6 +1218,7 @@
           <zorder>line_13</zorder>
           <zorder>label_thumb</zorder>
           <zorder>label_poster</zorder>
+          <zorder>checkBox_cover</zorder>
           <zorder>label_poster1</zorder>
           <zorder>treeWidget_number</zorder>
           <zorder>label_result</zorder>
@@ -24810,7 +24810,7 @@ p, li { white-space: pre-wrap; }
                                   <property name="minimumSize">
                                     <size>
                                       <width>0</width>
-                                      <height>64</height>
+                                      <height>88</height>
                                     </size>
                                   </property>
                                   <property name="styleSheet">

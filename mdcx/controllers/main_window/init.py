@@ -129,16 +129,18 @@ def _adaptive_window_sizes(avail_w: int, avail_h: int) -> tuple[int, int, int, i
       主页面无滚动区，低于此值底部字段不可达）；×0.75 保证 125% 缩放
       （1920x1080 → 逻辑 1536x864）下仍可缩小到 648，不回到锁死 700 的老问题。
     - 最小宽 min(850, 可用宽×0.6)：850 为历史值（92ef2437），小屏按比例收窄。
-    - 默认尺寸 min(1280, 可用宽×0.9) × min(860, 可用高×0.85)：历史实际默认
+    - 默认尺寸 min(1280, 可用宽×0.9) × min(920, 可用高×0.9)：历史实际默认
       1030×700 偏小（1080p 仅占半屏），1280×860 下主页面 cover_scale≈1.30，
-      封面/信息区随响应式布局同步放大；小屏/高缩放由 min() 自然收窄进屏内。
+      封面/信息区随响应式布局同步放大；用户反馈 860 偏扁、比例不协调
+      （2026-09-22），默认高提到 920（avail×0.85 → ×0.9），1280×920 下封面区
+      与信息区下移余量更足；小屏/高缩放由 min() 自然收窄进屏内。
       默认尺寸在 showEvent 首次显示时应用（基线既有钩子；Windows runner 的
       pytest 收尾崩溃为环境性 flake，与 resize 时机无关，勿再误归因）。
     """
     min_w = min(850, max(int(avail_w * 0.6), 400))
     min_h = min(650, max(int(avail_h * 0.75), 300))
     def_w = min(1280, max(int(avail_w * 0.9), min_w))
-    def_h = min(860, max(int(avail_h * 0.85), min_h))
+    def_h = min(920, max(int(avail_h * 0.9), min_h))
     return min_w, min_h, def_w, def_h
 
 

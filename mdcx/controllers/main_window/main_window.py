@@ -810,8 +810,14 @@ class MyMAinWindow(QMainWindow):
         # 设计基准宽 820：宽幅控件拉伸贴右缘、右缘锚定控件保持宽度平移、其余保持原位。
         main_page = ui.page_main
         main_w = main_page.width()
-        # 幂等：基于设计基准 820 的 cover_scale（全函数共用，须在统计栏/封面段前计算）
-        cover_scale = main_w / 820
+        # 幂等：基于设计基准 820 的 cover_scale（全函数共用，须在统计栏/封面段前计算）。
+        # 高度约束（2026-09-22 用户反馈）：宽而矮的窗口下封面按宽放大后，信息区下移量
+        # info_delta 被「防末行出页」钳住，简介/标签行与封面框下缘重叠——cover_scale
+        # 同时受高度约束：页面高须容纳「信息区底行 660+行高 40 ≈ 700」+封面增高量
+        # int(220*(s-1))，即 s ≤ (page_h-700)/220+1。与宽度约束取 min 后，info_delta
+        # 恒取封面增量一侧，简介行顶恒在封面框底下 50px；矮窗口封面自动少放大，
+        # 底行不溢出、信息区不重叠。下限 0.5 防御极矮窗口把 scale 压成非正数。
+        cover_scale = max(min(main_w / 820, (main_page.height() - 700) / 220 + 1), 0.5)
         # 宽幅拉伸（设计右缘≈页面右缘）：文件路径标签、分隔线
         ui.label_file_path.resize(max(main_w - 34, 300), ui.label_file_path.height())
         ui.line_14.resize(max(main_w - 49, 300), ui.line_14.height())
@@ -848,14 +854,20 @@ class MyMAinWindow(QMainWindow):
         ui.label_thumb_size.setGeometry(
             int(222 * cover_scale), cover_bottom, int(201 * cover_scale), int(40 * cover_scale)
         )
-        ui.checkBox_cover.move(490, cover_bottom)
+        # 议题 #124：勾选框右缘贴缩略图框右缘（设计 490+90=580=thumb_right），
+        # x = thumb_right - 90 等比跟随；y 贴封面框底（cover_bottom），但矮窗口
+        # info_delta 被夹小时信息区上移会与勾选框相撞（用户报告：简介栏与勾选框
+        # 重叠且勾选框被 line_6/label_thumb 盖住不可点）——y 取 min(cover_bottom,
+        # 380+info_delta) 保底钳到信息区上方 50px 设计间隙处，绝不与简介行重叠；
+        # zorder 已把勾选框提到 label_thumb 之上（钳到框内底部时仍可点击）。
+        thumb_right = int(580 * cover_scale)
+        ui.checkBox_cover.move(thumb_right - 90, min(cover_bottom, 380 + info_delta))
         # 信息区各控件：左列标签锚定设计 x=30（与「番号/标题/封面」对齐），y 统一下移
         # info_delta；下划线/值列按 cover_scale 等比例加长（议题 #141）：
         #   · 简介/标签（设计 x=70、宽 500）与右列时长/系列/发行（设计 x=350）的下划线
         #     右缘延伸到「缩略图框右缘」thumb_right = 580×scale；
         #   · 左列窄字段（日期/导演/制作，设计宽 220）宽度按 ×scale 加长；
         #   · 右列整体按 ×scale 右移，避免与加长后的左列窄字段重叠。
-        thumb_right = int(580 * cover_scale)
         # 左列标签（x 固定，保持与番号/标题/封面竖向对齐）
         # 简介/标签两行标签与其值行同顶（#154 行高恒定），其余行用 info_grow
         ui.label_18.move(30, 430 + info_delta)
@@ -908,7 +920,16 @@ class MyMAinWindow(QMainWindow):
         # 上区行（y70 番号/演员、y110 标题）右界受同右行按钮限制（label_source 460 /
         # pushButton_open_nfo 427）：右界 = min(对应限制, 结果树左缘-30)
         top_right = max(min(450, ui.treeWidget_number.x() - 30), 420)
-        title_right = max(min(417, ui.treeWidget_number.x() - 30), 390)
+        # 工具图标排（编辑NFO/打开文件夹/播放/右键菜单，设计 x=427..587、右缘 587≈
+        # 缩略图右缘 580）随窗口放大保持贴结果树左缘：整排按「设计基准 x + 树左缘
+        # 相对设计(600)的 extra」平移，间距 40 不变；extra<0（窄窗口）钳 0 回设计位，
+        # 每次无条件 move，双向幂等（用户报告：不靠右）。
+        tree_extra = max(ui.treeWidget_number.x() - 600, 0)
+        ui.pushButton_open_nfo.move(427 + tree_extra, 110)
+        ui.pushButton_open_folder.move(467 + tree_extra, 110)
+        ui.pushButton_play.move(507 + tree_extra, 110)
+        ui.pushButton_right_menu.move(547 + tree_extra, 110)
+        title_right = max(min(417 + tree_extra, ui.treeWidget_number.x() - 30), 390)
         ui.label_number.resize(max(top_right - 80, 161), ui.label_number.height())
         ui.label_actor.resize(max(top_right - 300, 161), ui.label_actor.height())
         ui.label_title.resize(max(title_right - 80, 341), ui.label_title.height())
