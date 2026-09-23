@@ -122,7 +122,7 @@ async def write_nfo(
     merge_strategy = manager.config.nfo_merge_strategy
     if not skip_merge and merge_strategy != NfoMergeStrategy.PREFER_SCRAPER and await aiofiles.os.path.exists(nfo_file):
         try:
-            existing_data, _ = await get_nfo_data(file_info.file_path, data.number)
+            existing_data, _ = await get_nfo_data(file_info.file_path, data.number, nfo_path=nfo_file)
             if existing_data is not None:
                 from .nfo_merger import merge_nfo_fields
 
@@ -427,8 +427,10 @@ async def write_nfo(
         return False
 
 
-async def get_nfo_data(file_path: Path, movie_number: str) -> tuple[CrawlersResult | None, OtherInfo | None]:
-    local_nfo_path = file_path.with_suffix(".nfo")
+async def get_nfo_data(file_path: Path, movie_number: str, nfo_path: Path | None = None) -> tuple[CrawlersResult | None, OtherInfo | None]:
+    # nfo_path：显式指定要读的 *.nfo 路径（默认 None 时按媒体路径换后缀推导）。
+    # NFO 合并必须传目标 nfo——源媒体 stem 与目标命名不一致时按推导路径会读错/读空，合并形同失效。
+    local_nfo_path = nfo_path if nfo_path is not None else file_path.with_suffix(".nfo")
     local_nfo_name = local_nfo_path.name
     file_folder = file_path.parent
     json_data = CrawlersResult.empty()

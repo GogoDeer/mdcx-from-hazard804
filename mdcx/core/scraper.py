@@ -497,9 +497,8 @@ class Scraper:
             self._check_stop(show_name)
             await asyncio.sleep(1)
 
-        # 非第一个加延时
-        Flags.scrape_starting = await Flags.increment("scrape_starting")
-        count = Flags.scrape_starting
+        # 非第一个加延时（increment 锁内原子返回，取返回值——二次读类属性会拿到并发任务的计数）
+        count = await Flags.increment("scrape_starting")
         thread_time = manager.config.thread_time
         if count == 1 or thread_time == 0 or manager.config.main_mode == 4:
             Flags.next_start_time = time.time()
@@ -1324,8 +1323,17 @@ class Scraper:
             if single_folder_catched:
                 await copy_trailer_to_theme_videos(folder_new_path, naming_rule)
 
-        # 生成nfo文件
-        await write_nfo(file_info, res, nfo_new_path, folder_new_path, update_nfo)
+        # 先移动视频本体：失败即判刮削失败退出——此时还没有任何伴生产物落新位置，
+        # 不会出现"新名 NFO/字幕孤悬 + 旧 NFO 被搬走 + 源影片裸奔"的割裂状态。
+        # （move_movie 内部的旧 NFO 迁移对后继 write_nfo 合并语义等价，顺序安全。）
+        if manager.config.success_file_move:
+            if not await move_movie(other, file_info, file_path, file_new_path):
+                return None, None
+
+        # 生成nfo文件（写失败必须计刮削失败：静默记成功会被断点续刮按 mtime 永久跳过，缺 NFO 永不补写）
+        if not await write_nfo(file_info, res, nfo_new_path, folder_new_path, update_nfo):
+            LogBuffer.error().write(f"NFO 写入失败: {nfo_new_path}")
+            return None, None
 
         # 移动字幕、种子、bif、trailer、其他文件（配置允许时才执行）
         if manager.config.success_file_move:
@@ -1334,10 +1342,6 @@ class Scraper:
             await move_torrent(folder_old_path, folder_new_path, file_name, movie_number, naming_rule)
             await move_bif(folder_old_path, folder_new_path, file_name, naming_rule)
             await move_other_file(res.number, folder_old_path, folder_new_path, file_name, naming_rule)
-
-            # 移动文件
-            if not await move_movie(other, file_info, file_path, file_new_path):
-                return None, None
         await save_success_list(file_path, file_new_path)
 
         # 创建软链接及复制文件（由 auto_link 独立控制）
