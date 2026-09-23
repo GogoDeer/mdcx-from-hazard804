@@ -427,7 +427,9 @@ async def write_nfo(
         return False
 
 
-async def get_nfo_data(file_path: Path, movie_number: str, nfo_path: Path | None = None) -> tuple[CrawlersResult | None, OtherInfo | None]:
+async def get_nfo_data(
+    file_path: Path, movie_number: str, nfo_path: Path | None = None
+) -> tuple[CrawlersResult | None, OtherInfo | None]:
     # nfo_path：显式指定要读的 *.nfo 路径（默认 None 时按媒体路径换后缀推导）。
     # NFO 合并必须传目标 nfo——源媒体 stem 与目标命名不一致时按推导路径会读错/读空，合并形同失效。
     local_nfo_path = nfo_path if nfo_path is not None else file_path.with_suffix(".nfo")

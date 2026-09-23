@@ -238,8 +238,12 @@ class JavdbApiCrawler(BaseCrawler):
         self._last_page_request_at = 0.0
         # 镜像轮换状态按任务上下文隔离（与基类 base_url 同因：实例站点级共享，
         # 并发任务互写 mirror 会污染彼此的成功镜像与轮换预算）。
-        self._mirror_state_ok: contextvars.ContextVar[str] = contextvars.ContextVar("javdb_api_successful_mirror", default="")
-        self._mirror_state_idx: contextvars.ContextVar[int] = contextvars.ContextVar("javdb_api_mirror_index", default=0)
+        self._mirror_state_ok: contextvars.ContextVar[str] = contextvars.ContextVar(
+            "javdb_api_successful_mirror", default=""
+        )
+        self._mirror_state_idx: contextvars.ContextVar[int] = contextvars.ContextVar(
+            "javdb_api_mirror_index", default=0
+        )
 
     @property
     def _successful_mirror(self) -> str:
