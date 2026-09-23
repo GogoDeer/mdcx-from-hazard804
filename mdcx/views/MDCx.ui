@@ -24438,7 +24438,7 @@ p, li { white-space: pre-wrap; }
 &lt;ul&gt;
 &lt;li&gt;&lt;b&gt;正常模式&lt;/b&gt;：通过番号联网抓取元数据、封面、缩略图、背景图，并整理文件。适合新下载的视频建立完整海报墙。&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;视频模式&lt;/b&gt;（整理模式）：仅联网刮削番号用于命名，然后重命名和移动视频文件，不下载图片、不生成 NFO。适合不需要海报墙、只想归类文件的用户。&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;更新模式&lt;/b&gt;：对已有 NFO 的影片在不改动文件位置结构的前提下重新整理文件结构，按更新规则重新命名目录和文件。适合已刮过但想调整目录结构的情况。&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;更新模式&lt;/b&gt;：读取已有 NFO 的影片信息，按更新模式的命名规则重新整理并移动目录和文件。适合已刮过但想调整目录结构的情况。&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;读取模式&lt;/b&gt;：通过读取本地 NFO 文件实现无需联网的查看或更新，4 个独立选项可自由组合——有 NFO 时更新（按更新规则整理）、无 NFO 时刮削（对没 NFO 的文件联网刮）、重新下载（重新下载图片）、更新 NFO（更新 NFO 内容如补演员 TMDB ID）。读取模式不受断点续刮缓存干扰，始终处理全部选中文件。&lt;/li&gt;
  &lt;li&gt;&lt;b&gt;NFO 合并策略&lt;/b&gt;（读取模式区域下拉框）：写入 NFO 前按策略决定如何处理已存在的 NFO——新数据优先（覆盖）/ 本地NFO优先 / 合并数组（去重）/ 保留已有（只补新字段）/ 仅填空字段，防止重刮覆盖手动整理的内容。&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;软链接&lt;/b&gt;（设置项，非独立模式）：在任意模式下勾选「创建软链接」即可刮削后不移动原视频，而是在目标目录创建软链接（类快捷方式），便于 PT 下载既刮削又保种；需以管理员 / 有权限身份运行。注意：软链接通常只能在媒体库展示，不能直接播放。&lt;/li&gt;
@@ -24482,6 +24482,8 @@ p, li { white-space: pre-wrap; }
 &lt;ul&gt;
 &lt;li&gt;&lt;b&gt;使用代理&lt;/b&gt;：开启后填写 HTTP / HTTPS 或 SOCKS5 代理地址（如 http://127.0.0.1:7890）。&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;走代理网站&lt;/b&gt;：仅指定域名走代理，其余直连。默认包含 amazon.co.jp、m.media-amazon.com、xcity.jp、minnano-av.com、avbase.net、javbus.com、javdb.com、javlibrary.com、r18.dev、mgstage.com、prestige-av.com、seesaawiki.jp、avsox.click、avsox.com、avmoo.shop、avmoo.com、avheat.shop、avheat.com、caribbeancom.com、heyzo.com、1pondo.tv、pacopacomama.com、10musume.com、mywife.cc、github.com、raw.githubusercontent.com、google.com、missav.ws、missav.ai、missav.live、aventertainments.com、javfree.me、7mmtv.sx、7tv022.com。可按需增删（也可直接填数据源名，如 missav、javdb，站点及其镜像域名将整体走代理）。&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;直连白名单&lt;/b&gt;：填在「走代理网站」列表内的域名若同时出现在白名单，将强制直连，用于个别域名需要绕开代理的场景。&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;全部走代理&lt;/b&gt;：勾选后「走代理网站」列表不再生效，全部请求交给代理软件按其规则分流。&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;CF Bypass 代理&lt;/b&gt;：为绕过 Cloudflare 的请求单独设置代理。&lt;/li&gt;
 &lt;/ul&gt;
 &lt;p&gt;如持续提示网络 / 代理错误，请检查地址与端口、确认代理软件处于全局模式，或尝试重启代理与网卡。&lt;/p&gt;
@@ -24511,7 +24513,7 @@ p, li { white-space: pre-wrap; }
 &lt;h4&gt;十、软件工具页面&lt;/h4&gt;
  &lt;ul&gt;
   &lt;li&gt;&lt;b&gt;NFO 库管理&lt;/b&gt;：左侧导航独立页面，浏览和编辑整个 NFO 库。选择目录后递归扫描所有 .nfo 文件生成列表（支持番号/演员/标题筛选）；点列表项读取 NFO 填充 15 字段编辑表单（番号/标题/演员/发行日/年份/时长/导演/片商/发行商/系列/评分/简介/标签/封面URL/海报URL），右侧同步预览本地海报和缩略图，可调起裁剪工具；保存前自动对比改动弹窗确认（字段级 diff），无改动不写盘；批量操作面板支持多选后一键替换演员名、加标签、删标签、统一系列名；列表右键菜单提供重新刮削（找同目录同名视频入队）、打开所在目录、删除 NFO。&lt;/li&gt;
-  &lt;li&gt;&lt;b&gt;演员库维护&lt;/b&gt;：直接操作 actor_database.xlsx。补全中文名（按 TMDB ID 补翻译）、补全 LibreDMM 链接、补全别名（可选来源：TMDB、minnano 或 JavDB；默认仅补缺别名的条目，勾选「全量更新」则并入全部行，不覆盖本地已有别名，支持「起始行/限量」分片续跑）、JavDB 中文名（从 JavDB 影片详情页抓取演员中文名，并发拉取影片详情，支持分片续跑与「停止当前维护任务」）、minnano 补全（从 minnano-av 补缺生日/简介，日文字段自动翻译）、检查用户库（扫描格式/结构/数据异常并弹窗报告，安全项可一键自动修复，tmdb 项给人工修复步骤）、打开数据库（用默认程序打开 xlsx 供手工编辑）、剔除男演员（按 TMDB 性别删除男优）、校验 tmdbid 有效性（清除 TMDB 失效 id 并按名字重搜补回）、更新 nfo tmdbid（用本地库新 id 覆盖 nfo 旧 id）。联网工具支持限量分片与「停止当前维护任务」按钮，网络请求自动并发，进度实时显示。&lt;/li&gt;
+  &lt;li&gt;&lt;b&gt;演员库维护&lt;/b&gt;：直接操作 actor_database.xlsx。补全中文名（按 TMDB ID 补翻译）、补全 LibreDMM 链接、补全别名（可选来源：TMDB、minnano 或 JavDB；默认仅补缺别名的条目，勾选「全量更新」则并入全部行，不覆盖本地已有别名，支持「起始行/限量」分片续跑）、JavDB 中文名（从 JavDB 移动端 API 的 name_zht/name 字段查询演员中文名/繁体名，无需 TMDB API Key，支持分片续跑与「停止当前维护任务」）、minnano 补全（从 minnano-av 补缺生日/简介，日文字段自动翻译）、检查用户库（扫描格式/结构/数据异常并弹窗报告，安全项可一键自动修复，tmdb 项给人工修复步骤）、打开数据库（用默认程序打开 xlsx 供手工编辑）、剔除男演员（按 TMDB 性别删除男优）、校验 tmdbid 有效性（清除 TMDB 失效 id 并按名字重搜补回）、更新 nfo tmdbid（用本地库新 id 覆盖 nfo 旧 id）。联网工具支持限量分片与「停止当前维护任务」按钮，网络请求自动并发，进度实时显示。&lt;/li&gt;
   &lt;li&gt;&lt;b&gt;刮削缓存管理&lt;/b&gt;：在「软件工具」页刮削缓存面板可查看断点续刮缓存状态（已完成/失败/总数），支持刷新缓存统计、导出缓存数据、重置缓存（清除全部已完成标记，下次全量重刮）、清空缓存（删除 scrape_state.db 文件）。适合在断点续刮数据异常或需要重新全量刮削时使用。&lt;/li&gt;
   &lt;li&gt;&lt;b&gt;Emby/Jellyfin 演员管理器&lt;/b&gt;：填写 Emby/Jellyfin 地址和 API 密钥后连接服务器，获取演员列表并按媒体库筛选（可配置只获取演员类型 / 重复去重）；从 Gfriends / graphis.ne.jp / minnano-av / 本地文件夹按可配置优先级匹配头像和背景图（本地文件夹采用预扫描索引，N 次全树遍历降为 1 次），从本地演员库 / 维基百科 / minnano-av / 数据库按可配置优先级匹配简介和出生日期；Gfriends / Graphis / 信息链路已合并为统一函数，按数据源优先级依次尝试；「数据源测试」可逐源验证结果，「设置」可配置数据源优先级与获取过滤；预览后批量同步到服务器（支持仅补缺失或强制重新获取，同步完成后自动刷新列表），双击演员行打开详情编辑对话框，可编辑简介 / 信息并单独同步头像 / 简介；头像缓存持久化到 userdata/emby_actor_cache/ 目录（不再随临时目录清理丢失），「清空缓存文件夹」可一键清理。&lt;/li&gt;
  &lt;li&gt;&lt;b&gt;单文件刮削&lt;/b&gt;：指定某个文件的番号网址进行刮削，当存在相同番号时可手工指定。&lt;/li&gt;
