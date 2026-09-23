@@ -109,6 +109,8 @@
 | `poster_sr_preset` | 放大预设：`realesr-photo-4x`（Real-ESRGAN 4x）或 `waifu-photo-2x`（waifu2x 2x）|
 | `poster_sr_max_dim` | 最长边小于此值才触发超分，默认 800px（1200 会把常见站点默认封面几乎全部纳入）|
 
+作用范围：刮削下载收尾与「软件工具 → 封面补图」落盘时自动生效（只处理海报，缩略图/背景图/剧照不超分；开关、阈值、失败保原图行为两处一致）。
+
 工具的获取方式（由打包形态决定，不需要手动下载）：
 
 - **Windows / Linux 打包版**：工具已内置在包里，首次使用时释放到 `userdata/sr/tools/<tool>/` 后使用。

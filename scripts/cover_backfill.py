@@ -22,6 +22,7 @@ from mdcx.core.file import get_file_info_v2, get_output_name
 from mdcx.core.file_crawler import FileScraper, classify_scrape_task
 from mdcx.core.image import add_mark, cut_thumb_to_poster
 from mdcx.core.mosaic import is_censored_mosaic
+from mdcx.core.super_resolution import maybe_upscale_poster
 from mdcx.core.web import poster_download
 from mdcx.crawler import CrawlerProvider
 from mdcx.models.enums import FileMode
@@ -528,6 +529,10 @@ async def backfill_cover(
 
     if not thumb_ok and not poster_ok:
         raise RuntimeError(f"{number}: no cover image downloaded")
+
+    # 与刮削收尾一致：海报超分钩子自行判开关/尺寸/体积，低清海报原地增强，失败保持原图
+    if poster_ok:
+        await maybe_upscale_poster(poster_final_path)
 
     await _add_watermark(file_info, result, other, enabled=watermark)
 

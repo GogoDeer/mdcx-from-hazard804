@@ -199,3 +199,137 @@ def test_dmm_direct_backfill_falls_back_to_landscape_crop(monkeypatch: pytest.Mo
     assert result.poster_path == tmp_path / "IPX-535-poster.jpg"
     assert result.thumb_path.exists()
     assert result.poster_path.exists()
+
+
+def test_backfill_cover_upscales_poster_before_watermark(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    import asyncio
+    from types import SimpleNamespace
+
+    from mdcx.models.model_types import CrawlersResult
+
+    poster_final = tmp_path / "out/SSIS-001-poster.jpg"
+    thumb_final = tmp_path / "out/SSIS-001-thumb.jpg"
+    calls: list[str] = []
+
+    async def _fake_resolve(raw, source_file=None):
+        return cb.BackfillInput(raw=raw, number="SSIS-001", source_file=None)
+
+    async def _fake_build_file_info(raw, number, output_dir, source_file):
+        return SimpleNamespace(file_ex=".mp4", mosaic="", website_name="")
+
+    async def _fake_crawl(file_info, site=None, timeout=None):
+        return CrawlersResult.empty()
+
+    def _fake_output_name(*args, **kwargs):
+        folder = tmp_path / "out"
+        return (
+            folder,
+            folder / "f.mp4",
+            folder / "f.nfo",
+            folder / "p.jpg",
+            folder / "t.jpg",
+            folder / "f-fanart.jpg",
+            "",
+            poster_final,
+            thumb_final,
+            folder / "f-fanart.jpg",
+        )
+
+    async def _fake_thumb(candidates, target, folder, *, label, overwrite):
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(b"thumb")
+        return True, "fake"
+
+    async def _fake_poster(result, other, poster_path, thumb_path, folder, *, overwrite):
+        poster_path.parent.mkdir(parents=True, exist_ok=True)
+        poster_path.write_bytes(b"poster")
+        other.poster_path = poster_path
+        calls.append("poster_download")
+        return True
+
+    async def _fake_sr(path):
+        calls.append(f"sr:{path.name}")
+        return False
+
+    async def _fake_watermark(file_info, result, other, *, enabled):
+        calls.append("watermark")
+
+    monkeypatch.setattr(cb, "resolve_backfill_input", _fake_resolve)
+    monkeypatch.setattr(cb, "_build_file_info", _fake_build_file_info)
+    monkeypatch.setattr(cb, "_crawl_number", _fake_crawl)
+    monkeypatch.setattr(cb, "_cover_candidate_sites", lambda file_info, site: ["fake"])
+    monkeypatch.setattr(cb, "get_output_name", _fake_output_name)
+    monkeypatch.setattr(cb, "_download_first_image", _fake_thumb)
+    monkeypatch.setattr(cb, "_download_uncropped_poster", _fake_poster)
+    monkeypatch.setattr(cb, "maybe_upscale_poster", _fake_sr)
+    monkeypatch.setattr(cb, "_add_watermark", _fake_watermark)
+
+    result = asyncio.run(cb.backfill_cover("SSIS-001", output_dir=tmp_path / "out"))
+
+    assert calls == ["poster_download", "sr:SSIS-001-poster.jpg", "watermark"]
+    assert result.poster_path == poster_final
+
+
+def test_backfill_cover_skips_upscale_without_poster(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    import asyncio
+    from types import SimpleNamespace
+
+    from mdcx.models.model_types import CrawlersResult
+
+    poster_final = tmp_path / "out/SSIS-001-poster.jpg"
+    thumb_final = tmp_path / "out/SSIS-001-thumb.jpg"
+    calls: list[str] = []
+
+    async def _fake_resolve(raw, source_file=None):
+        return cb.BackfillInput(raw=raw, number="SSIS-001", source_file=None)
+
+    async def _fake_build_file_info(raw, number, output_dir, source_file):
+        return SimpleNamespace(file_ex=".mp4", mosaic="", website_name="")
+
+    async def _fake_crawl(file_info, site=None, timeout=None):
+        return CrawlersResult.empty()
+
+    def _fake_output_name(*args, **kwargs):
+        folder = tmp_path / "out"
+        return (
+            folder,
+            folder / "f.mp4",
+            folder / "f.nfo",
+            folder / "p.jpg",
+            folder / "t.jpg",
+            folder / "f-fanart.jpg",
+            "",
+            poster_final,
+            thumb_final,
+            folder / "f-fanart.jpg",
+        )
+
+    async def _fake_thumb(candidates, target, folder, *, label, overwrite):
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(b"thumb")
+        return True, "fake"
+
+    async def _fake_poster(result, other, poster_path, thumb_path, folder, *, overwrite):
+        return False
+
+    async def _fake_sr(path):
+        calls.append("sr")
+        return False
+
+    async def _fake_watermark(file_info, result, other, *, enabled):
+        calls.append("watermark")
+
+    monkeypatch.setattr(cb, "resolve_backfill_input", _fake_resolve)
+    monkeypatch.setattr(cb, "_build_file_info", _fake_build_file_info)
+    monkeypatch.setattr(cb, "_crawl_number", _fake_crawl)
+    monkeypatch.setattr(cb, "_cover_candidate_sites", lambda file_info, site: ["fake"])
+    monkeypatch.setattr(cb, "get_output_name", _fake_output_name)
+    monkeypatch.setattr(cb, "_download_first_image", _fake_thumb)
+    monkeypatch.setattr(cb, "_download_uncropped_poster", _fake_poster)
+    monkeypatch.setattr(cb, "maybe_upscale_poster", _fake_sr)
+    monkeypatch.setattr(cb, "_add_watermark", _fake_watermark)
+
+    result = asyncio.run(cb.backfill_cover("SSIS-001", output_dir=tmp_path / "out"))
+
+    assert calls == ["watermark"]
+    assert result.poster_path is None
