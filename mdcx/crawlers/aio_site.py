@@ -3,6 +3,7 @@ import json
 from typing import override
 
 from ..base.web import get_aio_domain
+from ..config.manager import manager
 from .base import BaseCrawler, Context, CrawlerData, CrawlerException, get_year
 from .base.base_types import NOT_SUPPORT
 
@@ -55,9 +56,14 @@ class AioSiteCrawler(BaseCrawler):
             return [cls._default_url()]
 
     async def _resolve_domain(self, ctx: Context) -> str:
-        """解析站点入口域名：优先用户自定义 URL，其次动态获取，最后回退默认域名。"""
-        if self.base_url:
-            return self.base_url.rstrip("/")
+        """解析站点入口域名：优先用户自定义 URL，其次动态获取，最后回退默认域名。
+
+        不能拿 self.base_url 短路——它的初值本就等于默认兜底域名，
+        直接返回会把动态解析整族短路（2026-09-23 全面审查）。
+        """
+        custom = str(manager.config.get_site_url(self.site(), "") or "").strip()
+        if custom:
+            return custom.rstrip("/")
         try:
             domain = await get_aio_domain(self.domain_site)
             ctx.debug(f"动态域名: {domain}")
