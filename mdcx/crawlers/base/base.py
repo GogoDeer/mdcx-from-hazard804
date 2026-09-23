@@ -1,3 +1,4 @@
+import contextvars
 import time
 import traceback
 from abc import ABC, abstractmethod
@@ -89,12 +90,44 @@ class GenericBaseCrawler[T: Context = Context](ABC):
             browser (_type_, optional): 保留的兼容参数, 当前主流程不再使用浏览器请求.
         """
         self.async_client = client
-        self.base_url: str = base_url or self.base_url_()
+        # base_url 与镜像轮询状态按"每个刮削任务一份"的 ContextVar 承载：
+        # provider 站点级缓存实例、多文件并发共享同一对象，普通属性会让 A 任务
+        # 请求失败的换域污染 B 任务进行中的 URL 拼接与镜像预算（2026-09-23 全面审查）。
+        self._base_url_default: str = base_url or self.base_url_()
+        self._base_url_ctx: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+            f"base_url_{type(self).__name__}_{id(self)}", default=None
+        )
         self.browser = browser
 
+    @property
+    def base_url(self) -> str:
+        override = self._base_url_ctx.get()
+        return override if override is not None else self._base_url_default
+
+    @base_url.setter
+    def base_url(self, value: str) -> None:
+        self._base_url_ctx.set(value)
+
     def _init_rotator(self, domains: list[str], custom_url: str) -> None:
-        """初始化镜像域名轮询器（含用户自定义 URL 优先）。"""
-        self._rotator = DomainRotator(domains, custom_url=custom_url)
+        """初始化镜像域名轮询器（含用户自定义 URL 优先）。
+
+        轮询器按任务 ContextVar 惰性克隆：起点与已消耗预算任务隔离。
+        """
+        self._rotator_spec: tuple[list[str], str] = (list(domains or []), str(custom_url or ""))
+        self._rotator_holder: contextvars.ContextVar[DomainRotator | None] = contextvars.ContextVar(
+            f"rotator_{type(self).__name__}_{id(self)}", default=None
+        )
+
+    @property
+    def _rotator(self) -> "DomainRotator | None":
+        spec = getattr(self, "_rotator_spec", None)
+        if spec is None or not spec[0]:
+            return None
+        rotator = self._rotator_holder.get()
+        if rotator is None:
+            rotator = DomainRotator(spec[0], custom_url=spec[1])
+            self._rotator_holder.set(rotator)
+        return rotator
 
     async def _get_text_with_rotate(
         self,

@@ -239,11 +239,17 @@ def test_get_text_with_rotate_switches_domain():
             pass
 
     crawler = mmtv.MmtvCrawler(client=FakeClient())
-    html, err = asyncio.run(crawler._get_text_with_rotate(FakeCtx(), "https://www.7mmtv.sx/zh/x.html"))
+
+    async def _run():
+        # 轮询器按任务 ContextVar 隔离：状态断言必须取在任务上下文内
+        html, err = await crawler._get_text_with_rotate(FakeCtx(), "https://www.7mmtv.sx/zh/x.html")
+        return html, err, crawler._rotator.current, crawler._rotator.domains
+
+    html, err, current, domains = asyncio.run(_run())
     assert html == "<html>ok</html>"
     assert err == ""
-    assert crawler._rotator.current == "https://7tv022.com"
-    assert crawler._rotator.domains == ["https://www.7mmtv.sx", "https://7tv022.com"]
+    assert current == "https://7tv022.com"
+    assert domains == ["https://www.7mmtv.sx", "https://7tv022.com"]
 
 
 def test_proxy_default_contains_7mmtv_domains():

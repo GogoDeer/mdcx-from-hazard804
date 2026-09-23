@@ -1,4 +1,5 @@
 import asyncio
+import contextvars
 import random
 import re
 import time
@@ -235,19 +236,37 @@ class JavdbApiCrawler(BaseCrawler):
         super().__init__(client=client, base_url=base_url, browser=browser)
         self._page_request_lock = asyncio.Lock()
         self._last_page_request_at = 0.0
-        self._mirror_index = 0  # 当前使用的 mirror 索引
-        self._successful_mirror = ""  # 记录成功使用的 mirror
+        # 镜像轮换状态按任务上下文隔离（与基类 base_url 同因：实例站点级共享，
+        # 并发任务互写 mirror 会污染彼此的成功镜像与轮换预算）。
+        self._mirror_state_ok: contextvars.ContextVar[str] = contextvars.ContextVar("javdb_api_successful_mirror", default="")
+        self._mirror_state_idx: contextvars.ContextVar[int] = contextvars.ContextVar("javdb_api_mirror_index", default=0)
+
+    @property
+    def _successful_mirror(self) -> str:
+        return self._mirror_state_ok.get()
+
+    @_successful_mirror.setter
+    def _successful_mirror(self, value: str) -> None:
+        self._mirror_state_ok.set(value)
+
+    @property
+    def _mirror_index(self) -> int:
+        return self._mirror_state_idx.get()
+
+    @_mirror_index.setter
+    def _mirror_index(self, value: int) -> None:
+        self._mirror_state_idx.set(value)
 
     @property
     def base_url(self) -> str:
-        """获取当前 base_url，如有成功记录的 mirror 则优先使用"""
+        """获取当前 base_url，如有成功记录的 mirror 则优先使用（均为任务级状态）"""
         if self._successful_mirror:
             return self._successful_mirror
-        return self._base_url or _DEFAULT_BASE
+        return BaseCrawler.base_url.fget(self) or _DEFAULT_BASE
 
     @base_url.setter
     def base_url(self, value: str):
-        self._base_url = value
+        BaseCrawler.base_url.fset(self, value)
 
     @staticmethod
     def _number_key(value: str) -> str:
