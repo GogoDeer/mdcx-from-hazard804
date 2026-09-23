@@ -779,7 +779,18 @@ class AsyncWebClient:
         return
 
     async def _record_retryable_response_failure(self, error_msg: str, *, pool_key: str) -> None:
-        await self.reset_connections(error_msg, pool_key=pool_key)
+        """可重试**状态码**（4xx/5xx）是协议层正常应答，连接本身无恙：只剔除当次
+        指纹（被封类型下指纹是嫌疑人，下次换用），不重建连接池——session 的
+        Cookie jar 与 TLS 会话复用全部保留，否则站点 429/403 时刻恰好丢掉
+        cf_clearance / 站方会话 cookie，重试退化为对站点的连接风暴，与
+        Retry-After 冷却互相抵消（2026-09-23 全面审查）。
+        连接池重建只属于传输层失败的 _record_transport_failure。"""
+        if self._closed:
+            return
+        pool_base_key, _, failed_fingerprint_id = pool_key.partition("|fp=")
+        if failed_fingerprint_id:
+            self._excluded_fingerprint_by_pool_base[pool_base_key] = failed_fingerprint_id
+        self._fingerprint_states_by_pool_base.pop(pool_base_key, None)
 
     def _get_fingerprint_for_request(
         self,
