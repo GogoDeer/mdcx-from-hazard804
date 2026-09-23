@@ -266,11 +266,11 @@ class JavdbApiCrawler(BaseCrawler):
         """获取当前 base_url，如有成功记录的 mirror 则优先使用（均为任务级状态）"""
         if self._successful_mirror:
             return self._successful_mirror
-        return BaseCrawler.base_url.fget(self) or _DEFAULT_BASE
+        return super().base_url or _DEFAULT_BASE
 
     @base_url.setter
     def base_url(self, value: str):
-        BaseCrawler.base_url.fset(self, value)
+        super().base_url = value
 
     @staticmethod
     def _number_key(value: str) -> str:
