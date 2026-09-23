@@ -637,7 +637,7 @@ class EmbyActorManagerDialog(QDialog):
                 "仅缺失头像",
                 "头像和简介都缺",
                 "缺失头像或缺失简介",
-                "更新所有演员详情（不含头像/影片数）",
+                "重新获取所有演员详情（不含头像/影片数）",
                 "重新获取所有演员简介",
                 "重新获取所有演员头像",
                 "重新获取所有演员头像和简介",
@@ -1109,7 +1109,7 @@ class EmbyActorManagerDialog(QDialog):
             "仅缺失头像": "missing_image",
             "头像和简介都缺": "missing_both",
             "缺失头像或缺失简介": "missing_all",
-            "更新所有演员详情（不含头像/影片数）": "force_info",
+            "重新获取所有演员详情（不含头像/影片数）": "force_info",
             "重新获取所有演员简介": "force_overview",
             "重新获取所有演员头像": "force_image",
             "重新获取所有演员头像和简介": "force_all",
@@ -1583,9 +1583,9 @@ class EmbyActorManagerDialog(QDialog):
 
 IMAGE_SOURCE_NAMES = {
     "gfriends": "Gfriends 头像库",
-    "graphis": "graphis 头像/背景",
+    "graphis": "Graphis 头像/背景",
     "minnano": "minnano-av 头像",
-    "local": "本地头像",
+    "local": "本地演员照片目录",
 }
 INFO_SOURCE_NAMES = {
     "local": "本地演员库",
