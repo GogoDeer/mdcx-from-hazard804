@@ -22,20 +22,20 @@
 - **价值：中**　**难度：高**（5-7 天）
 - 元数据版本号 + 文件指纹（size+mtime）变更检测，schema 升级自动重扫
 - 失败按错误码分级 + `next_retry_time` 退避，避免反复重试同一批失败文件
-- 关键帧截图：全站无图时 ffmpeg 截帧选最有意义帧作 poster（国产/素人常用）；配置 `video_screenshot_enabled` 默认关，依赖系统 ffmpeg（非 Python 包）
+- 关键帧截图：全站无图时截帧选最有意义帧作 poster（国产/素人常用）；配置 `video_screenshot_enabled` 默认关。依赖复用 `utils/video.py` 现有后端选择（2026-09-23 核对：pyav 优先、ffprobe 兜底，`get_video_backend` 已在位）：pyav 环境解码直接用 av，无 pyav 走 ffmpeg 外部命令
 
 价值：国产/素人片无封面时自动补海报墙。
 
 ---
 
-### 3. 演员别名 + 标签声明式配置 ⬜
-- **价值：高**　**难度：中**（2-3 天）
-- 配置文件写一行 `河北彩花 = 河北彩伽,河北彩花（河北彩伽）`，新刮削自动把别名替换为规范名
-- 标签树形映射 + 父级补全 + 冲突检测；Actor Split 正则拆分 `"演员A (别名B)"`
-- 写 NFO 前：规范名进 `<actor>`，原始写法保留到 `<actor><aliases>`
-- 重名冲突软合并；已有影片不自动重命名；与 #15 联动（别名作 GFriends 候选名来源）
-
-价值：同一人（河北彩伽/河北彩花）分两个演员、带括弧后缀需手动清的问题，写一行配置即统一。
+### 3. 演员别名补全 🔶（2026-09-23 重定义：范围减半，标签配置拆出为 #34）
+- **价值：中高**　**难度：低**（1-2 天，原估 2-3 天）
+- 已有能力（本次重定义的依据）：`map_actor_names` 按字段语言统一规范名；actor_database keyword 别名列 + 反查索引已实现"任意写法 → 规范名"O(1) 命中——原设想的"配置文件写别名替换规范名"与此构成双事实源，**移出范围**
+- 待做：
+  - Actor Split 正则拆分 `"演员A (别名B)"` 输入
+  - 写 NFO 时原始写法保留到 `<actor><aliases>`——定位是**我方自存档**（回溯原始刮削结果、日后回滚参考）。Emby/Jellyfin/Kodi 的 NFO 解析沿袭 Kodi 规范，`<actor>` 内只识别 name/role/order/thumb，未知子标签整体跳过，Person 模型也只有单一名字字段；**不要按"媒体库按别名搜索"来预期此标签**，该需求已由生成阶段的反查归一在源头解决，比 NFO 方案更可靠
+  - aliases 同时喂 #15 GFriends 候选名序列（工具链内自足，不依赖媒体服务器）
+  - 重名冲突软合并；已有影片不自动重命名
 
 ---
 
@@ -56,7 +56,7 @@
 - **价值：中**　**难度：中**（3-5 天）
 - identifier resolver：`uniqueid[type]` → `<num>` + 无 type → `<{site}id>` 标签映射（→ Website 枚举）
 - **可配置字段映射**：每字段多个候选 XML 路径按序取第一个非空
-- 演员/标签别名匹配 + 自动创建开关
+- 演员/标签别名匹配 + 自动创建开关（2026-09-23 核对：演员侧归一已由 actor_database keyword 反查索引全覆盖，本项收敛到标签侧归一与外部 NFO 字段映射）
 
 价值：从 MetaTube/Jellyfin 等换工具已有 NFO 能读进来。
 
@@ -149,7 +149,7 @@
 
 ### 15. GFriends 候选名列表匹配 🔶（单名函数 `gfriends_find_actor(gfriends_index, name)` 已存在）
 - **价值：中**　**难度：低**（1-2 天）
-- 待做：接口改为接受 `names: list[str]` 依次 NFKC 归一化匹配，首个命中即返回；`ActorInfo` 加 `aliases: list[str]`（来源：JavDB / keyword 列 / #3 声明式别名）
+- 待做：接口改为接受 `names: list[str]` 依次 NFKC 归一化匹配，首个命中即返回；`ActorInfo` 加 `aliases: list[str]`（来源：JavDB / 演员数据库 keyword 别名列 / NFO `<actor><aliases>` 存档（#3，仅我方工具链消费））
 
 ---
 
@@ -166,6 +166,7 @@
 - **价值：中**　**难度：中**（2-3 天）
 - `ProxyProfile` 多 profile；`SiteConfig.proxy`: None=继承全局 / `"direct"`=不用 / 其他=指定 profile
 - UI：设置 → 代理管理
+- 注入通道（2026-09-23 补充）：代理解析结果可仿 crawlers/base/base.py 的 `_base_url_ctx`/`_rotator_holder` 任务级 ContextVar 模式承载，并发批刮间天然隔离，爬虫基类骨架已为此留好形状
 
 价值：JavDB 要日本节点、DMM 要别的代理，每站独立配。
 
@@ -208,6 +209,7 @@
 - 参考 mdcz `tests/recording/`（record→replay）：真实站点响应录制一次存 fixture，CI/日常测试离线回放
 - 解决我们反复踩的"手写 HTML 夹具与真实页面漂移"（#174 生产形态 spec、#176 真实快照两次实证同族问题）；站点改版后重录即可回归
 - 起步：先给 top 5 流量站（javbus/javdb/dmm/avmoo/missav）各录 1 个番号样本
+- 成本红利（2026-09-23 全库审查副产品）：base_url/镜像轮询/域名轮转器已按任务级 ContextVar 隔离（crawlers/base/base.py `_base_url_ctx`/`_rotator_holder`），回放录制 fixture 无跨任务状态污染，注入面已收窄
 
 ### 23. 媒体根路径规范化（rootId + relativePath）⬜
 - **价值：中**　**难度：高**（>1 周，侵入面大）
@@ -277,7 +279,7 @@
 - **2026-09-23 三仓增量复查（javdb-cli/OpenAver/amane 均有当日推送）**：
   - javdb-cli v0.8.0-0.8.2：变化集中在其自身 CI/发布工程（可信验证、不可变移交、fork-safe 冒烟门）与 HLS remux 修复，**App API 端点面零新增**——#9/#29 的端点清单与结论维持有效
   - amane 09-21~23 三个 fix：①「javbus 检索回退只接受番号相符」——我们 `javbus.py:is_match` 已有同款守卫且归一更完整（FC2 剥 PPV 双向归一，全库审查 A5 强化）；②「长文本存纯文本并移除简介 CDATA」——我们 `NfoInclude.OUTLINE_NO_CDATA` 默认已不带 CDATA 包裹且可配置，方向一致无需改；web 端列表/重试条与桌面 GUI 无对应
-  - 结论：三仓近三日**无需码增量**；后续增量扫描建议冻结至下轮站点改版潮，时间优先投 P1 实装（#3 别名声明式配置、#1 刮削缓存三项）**
+  - 结论：三仓近三日**无需码增量**；后续增量扫描建议冻结至下轮站点改版潮。2026-09-23 进度更新：#1 已完成、#3 重定义为演员别名补全（标签配置拆出 #34），实装顺序改为 #3+#15 → #22 → #11
   - OpenAver 152c/d 新域观察（暂不做）：人脸自动对焦辅助封面裁切——检测无设备/超时自判停用/用户显式关闭不被系统覆写/灯箱手动裁切。我们 `controllers/cut_window.py` 固定模板裁图，若引入人脸优先裁切需背 OpenCV 依赖，等需求出现再评估
 
 
@@ -295,3 +297,8 @@
 ### 33. amane 独有站点补录候选 ⬜
 - **价值：低**　**难度：中**（每站 1-2 天）
 - amane 26 站中我们缺 5 个：**jav321**（与 #24 重复计）、fc2club（FC2 第三方）、kin8（KIN8 软)、giga（ARIOL/GIGA）、wp_works（W16 系）——后四个为小厂牌官网，我们 official 路由未覆盖时才有价值，先核对 official 30 家清单再定
+
+### 34. 标签声明式配置（树形映射 + 父级补全 + 冲突检测）⬜（2026-09-23 自 #3 拆出）
+- **价值：中**　**难度：中**（1-2 天）
+- 标签树形映射（子标签自动补父级）、同义标签归一、冲突检测在写 NFO 前报告而非静默覆盖
+- 与刮削缓存联动时注意：改标签映射属于解析/数据修正类变更，上线须 bump `SCRAPE_SCHEMA_VERSION` 才能追平存量 done 记录
