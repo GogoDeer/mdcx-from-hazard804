@@ -120,7 +120,7 @@ jobs:
       # 缓存 key 带基准文件指纹，基准更新即轮换；命中时 fetch 脚本幂等跳过下载，未命中则直接拉取。
       - name: Restore SR tools cache (Windows/Linux)
         if: ${{ matrix.build == 'windows' || matrix.build == 'linux' }}
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: build/sr_tools
           key: sr-tools-${{ matrix.build }}-${{ hashFiles('mdcx/core/super_resolution.py') }}
@@ -150,6 +150,33 @@ jobs:
         env:
           PYTHONIOENCODING: utf-8
         run: uv run scripts/build.py --version "${{ steps.release-tag.outputs.tag }}" --debug
+
+      - name: Pre-check macOS artifact for release upload
+        if: ${{ matrix.build == 'macos' }}
+        shell: bash
+        run: |
+          artifact="dist/MDCx-${{ matrix.arch }}.dmg"
+          tag="${{ steps.release-tag.outputs.tag }}"
+          platform="${{ matrix.build }}"
+          arch="${{ matrix.arch }}"
+          echo "检查发布产物：$artifact"
+          echo "计划发布文件名：MDCx-${tag}-${platform}-${arch}-${{ github.sha }}.dmg"
+          if [ ! -f "$artifact" ]; then
+            echo "::error::发布产物缺失：$artifact，请先确认构建成功"
+            exit 1
+          fi
+          size=$(wc -c < "$artifact" | tr -d ' ')
+          if [ "$size" -le 0 ]; then
+            echo "::error::发布产物为空文件：$artifact"
+            exit 1
+          fi
+          if [ -z "$tag" ] || [ -z "$platform" ] || [ -z "$arch" ]; then
+            echo "::error::发布 Tag/平台/架构信息缺失，无法确认上传文件名规则"
+            exit 1
+          fi
+          if [ "$size" -lt 1048576 ]; then
+            echo "::warning::产物文件较小，可能异常：$artifact size=${size} bytes。请确认构建输出是否完整。"
+          fi
 
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v7
@@ -199,6 +226,33 @@ jobs:
         with:
           name: mdcx-windows-${{ matrix.arch }}
           path: dist/MDCx.exe
+
+      - name: Pre-check Linux artifact for release upload
+        if: ${{ matrix.build == 'linux' }}
+        shell: bash
+        run: |
+          artifact="dist/MDCx"
+          tag="${{ steps.release-tag.outputs.tag }}"
+          platform="${{ matrix.build }}"
+          arch="${{ matrix.arch }}"
+          echo "检查发布产物：$artifact"
+          echo "计划发布文件名：MDCx-${tag}-${platform}-${arch}-${{ github.sha }}"
+          if [ ! -f "$artifact" ]; then
+            echo "::error::发布产物缺失：$artifact，请先确认构建成功"
+            exit 1
+          fi
+          size=$(wc -c < "$artifact" | tr -d ' ')
+          if [ "$size" -le 0 ]; then
+            echo "::error::发布产物为空文件：$artifact"
+            exit 1
+          fi
+          if [ -z "$tag" ] || [ -z "$platform" ] || [ -z "$arch" ]; then
+            echo "::error::发布 Tag/平台/架构信息缺失，无法确认上传文件名规则"
+            exit 1
+          fi
+          if [ "$size" -lt 1048576 ]; then
+            echo "::warning::产物文件较小，可能异常：$artifact size=${size} bytes。请确认构建输出是否完整。"
+          fi
 
       - name: Upload Linux artifact
         uses: actions/upload-artifact@v7

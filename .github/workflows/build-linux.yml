@@ -1,5 +1,8 @@
 name: Build Linux Executable
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 on:
   workflow_dispatch:
 
@@ -34,7 +37,7 @@ jobs:
         run: uv sync --locked --all-extras --dev
 
       - name: Restore SR tools cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: build/sr_tools
           key: sr-tools-linux-${{ hashFiles('mdcx/core/super_resolution.py') }}

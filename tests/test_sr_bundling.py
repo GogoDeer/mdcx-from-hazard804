@@ -163,20 +163,91 @@ def test_cleanup_preserves_sr_tools(tmp_path, monkeypatch):
     assert not stale.exists()
 
 
+def _is_macos_build(text: str, build_idx: int) -> bool:
+    return "--create-dmg" in text[max(0, build_idx - 500) : build_idx]
+
+
 def test_packaging_workflows_fetch_sr_tools_before_build():
     """Windows/Linux 打包工作流必须先 fetch 再 build。
 
     CI 冒烟实证：build.py 缺工具已硬失败，但 ci.yaml / 手动打包工作流漏了
     `scripts.fetch_sr_tools`，Windows job 测试全绿后在冒烟步 BuildError。
+    macOS 不内嵌超分，release.yml 的 create-dmg 构建允许没有配对 fetch。
+    ci.yaml 现有 Windows + Linux 两处冒烟，必须各自 fetch 后再 build。
     """
     root = Path(".github/workflows")
     for name in ("ci.yaml", "release.yml", "build-windows.yml", "build-linux.yml"):
         text = (root / name).read_text(encoding="utf-8")
-        fetch_idx = text.find("scripts.fetch_sr_tools")
-        build_idx = text.find("scripts/build.py")
-        assert fetch_idx >= 0, f"{name} 缺少 scripts.fetch_sr_tools"
-        assert build_idx >= 0, f"{name} 缺少 scripts/build.py"
-        assert fetch_idx < build_idx, f"{name} 必须先 fetch_sr_tools 再 build.py"
+        fetch_idxs = [m.start() for m in re.finditer(r"scripts\.fetch_sr_tools", text)]
+        build_idxs = [m.start() for m in re.finditer(r"scripts/build\.py", text)]
+        assert fetch_idxs, f"{name} 缺少 scripts.fetch_sr_tools"
+        assert build_idxs, f"{name} 缺少 scripts/build.py"
+        win_linux_builds = [i for i in build_idxs if not _is_macos_build(text, i)]
+        assert win_linux_builds, f"{name} 缺少 Windows/Linux 的 scripts/build.py"
+        if name == "ci.yaml":
+            assert len(fetch_idxs) == len(win_linux_builds) >= 2, (
+                f"ci.yaml 冒烟 fetch/build 次数应对等且不少于 2: fetch={len(fetch_idxs)} build={len(win_linux_builds)}"
+            )
+            for fetch_idx, build_idx in zip(fetch_idxs, win_linux_builds, strict=True):
+                assert fetch_idx < build_idx, "ci.yaml 每处冒烟必须先 fetch_sr_tools 再 build.py"
+            continue
+        assert all(fetch_idxs[0] < build_idx for build_idx in win_linux_builds), (
+            f"{name} 必须先 fetch_sr_tools 再跑 Windows/Linux 的 build.py"
+        )
+
+
+def test_ci_linux_smoke_job_exists():
+    """Linux 打包参数（省略图标、超分 --add-binary）须在 PR/主干冒烟，不能等到发版才暴露。"""
+    text = Path(".github/workflows/ci.yaml").read_text(encoding="utf-8")
+    assert "name: Linux Build Smoke" in text
+    assert "sr-tools-linux-" in text
+    assert text.count("scripts.fetch_sr_tools") >= 2
+    assert text.count("scripts/build.py") >= 2
+
+
+def test_release_prechecks_all_platforms():
+    """发版产物预检必须覆盖 macOS / Windows / Linux，缺文件时在 upload 前硬失败。"""
+    text = Path(".github/workflows/release.yml").read_text(encoding="utf-8")
+    for name in (
+        "Pre-check macOS artifact for release upload",
+        "Pre-check Windows artifact for release upload",
+        "Pre-check Linux artifact for release upload",
+    ):
+        assert name in text, f"release.yml 缺少 {name}"
+    assert "dist/MDCx-${{ matrix.arch }}.dmg" in text
+    assert "dist/MDCx.exe" in text
+    assert 'artifact="dist/MDCx"' in text
+
+
+def test_sr_tools_cache_action_is_v6():
+    """SR 工具缓存必须用 actions/cache@v6（Node 24），与 #140 口径一致。"""
+    root = Path(".github/workflows")
+    pattern = re.compile(r"uses:\s*actions/cache@v(\d+)")
+    for name in ("ci.yaml", "release.yml", "build-windows.yml", "build-linux.yml", "update-sr-tools.yml"):
+        text = (root / name).read_text(encoding="utf-8")
+        versions = pattern.findall(text)
+        assert versions, f"{name} 未使用 actions/cache"
+        assert all(v == "6" for v in versions), f"{name} 仍有非 v6 的 actions/cache: {versions}"
+
+
+def test_update_sr_tools_pins_python_and_linux_qt_libs():
+    """周预热必须钉 Python 3.13，Linux 系统库与 ci.yaml 对齐，否则 fetch 在 import PyQt6 时红。"""
+    text = Path(".github/workflows/update-sr-tools.yml").read_text(encoding="utf-8")
+    assert "python-version:" in text and "3.13" in text
+    for pkg in (
+        "libqt6core6",
+        "libqt6gui6",
+        "libqt6widgets6",
+        "libxcb-cursor0",
+        "libxcb-xinerama0",
+        "libxcb-icccm4",
+        "libxcb-image0",
+        "libxcb-keysyms1",
+        "libxcb-randr0",
+        "libxcb-render-util0",
+        "libxcb-shape0",
+    ):
+        assert pkg in text, f"update-sr-tools.yml Linux 依赖缺少 {pkg}"
 
 
 def test_sr_tools_cache_keys_rotate_with_baseline_fingerprint():

@@ -2,7 +2,7 @@
 #
 # 工具二进制不入库：打包时由 scripts/fetch_sr_tools.py 从官方 GitHub Release 拉取，
 # 校验 sha256 后解压到 build/sr_tools。这里每周预热 actions/cache，
-# 让 release.yml / package-trawl.yml 打包时免下载、提速构建。
+# 让 release.yml / ci.yaml / 手动打包工作流命中缓存、免重复下载。
 #
 # 缓存 key 携带 `mdcx/core/super_resolution.py` 的内容指纹：URL/基准一变，key 自动
 # 轮换（actions/cache 同 key 永不覆写），首个构建 cache miss 重新下载并校验，sha256
@@ -10,6 +10,9 @@
 # 被 is_ready 静默命中，永远打旧版工具（本次审查发现的缺陷形态）。
 
 name: Update SR tools cache
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 on:
   schedule:
@@ -32,33 +35,39 @@ jobs:
           - build: linux
             os: ubuntu-latest
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
 
-      - name: Set up Python
+      - name: Set up Python 3.13
         uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
 
       - name: Set up uv
         uses: astral-sh/setup-uv@v10.1.0
         with:
           activate-environment: true
 
+      # Linux 上 import 链（scripts.fetch_sr_tools → mdcx.core.super_resolution →
+      # mdcx.signals/resources → PyQt6）需要 Qt 系统库；与 ci.yaml / build-linux.yml 对齐。
+      - name: Install Qt runtime libs (Linux)
+        if: matrix.build == 'linux'
+        run: >
+          sudo apt-get update -y && sudo apt-get install -y
+          libglib2.0-0 libegl1 libgl1 libfontconfig1
+          libqt6core6 libqt6gui6 libqt6widgets6 libqt6network6 libqt6xml6
+          libdbus-1-3 libxkbcommon0 libopengl0
+          libxcb-cursor0 libxcb-xinerama0 libxcb-icccm4 libxcb-image0
+          libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0
+
       - name: Install locked dependencies
         shell: bash
         run: uv sync --locked --all-extras --dev
 
-      # Linux 上 import 链（scripts.fetch_sr_tools → mdcx.core.super_resolution →
-      # mdcx.signals/resources → PyQt6）需要 Qt 系统库；与 ci.yaml 的 Linux 依赖对齐
-      - name: Install Qt runtime libs (Linux)
-        if: matrix.build == 'linux'
-        shell: bash
-        run: |
-          sudo apt-get update -y && sudo apt-get install -y \
-            libglib2.0-0 libegl1 libgl1 libfontconfig1
-
       - name: Cache SR tools
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: build/sr_tools
           key: sr-tools-${{ matrix.build }}-${{ hashFiles('mdcx/core/super_resolution.py') }}
