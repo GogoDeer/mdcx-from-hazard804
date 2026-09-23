@@ -628,12 +628,17 @@ class MyMAinWindow(QMainWindow):
         scroll.sync_content_min_height()
         # 批量保存用法说明高度贴合换行行数（2026-09-22 用户报告：文字被裁 +
         # 按钮与文字间空白）。.ui 写死 88 与实际行数脱钩——窄窗口/DPI 放大时
-        # 文字 4 行超出被裁、行数少时垂直居中留空白。改 AlignTop + 按当前宽度
-        # heightForWidth 现算后钉固定高（下限 88）：只抬 minimum 的写法在长文
-        # 换短文时布局不会回收已撑高的当前高度，Windows 上残留长文高度。
+        # 文字 4 行超出被裁、行数少时垂直居中留空白。改 AlignTop + 按一下源
+        # boundingRect 现算换行高后钉固定高（下限 88）：只抬 minimum 的写法长文
+        # 换短文不回收；heightForWidth 读 QLabel 文档缓存，Windows 上 setText 后
+        # 偶发返回旧文本高度，固定高滞留长文值（CI flake 138 != 88）。
         hint = ui.label_nfo_lib_batch_hint
-        hint_h = hint.heightForWidth(hint.width())
-        if hint_h > 0:
+        if hint.width() > 0:
+            hint_h = (
+                hint.fontMetrics()
+                .boundingRect(QRect(0, 0, hint.width(), 10_000_000), int(Qt.TextFlag.TextWordWrap), hint.text())
+                .height()
+            )
             hint.setFixedHeight(max(hint_h, 88))
 
     def resizeEvent(self, a0):

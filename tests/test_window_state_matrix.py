@@ -673,8 +673,9 @@ def test_nfo_lib_batch_hint_fits_wrapped_lines(win, app):
     assert hint.height() >= need, f"hint 高度 {hint.height()} < 换行所需 {need}，文字会被裁"
 
     # 还原短文本：高度=下限 88 与当前宽度换行实测高取大。fontMetrics 独立重算而非
-    # 复制生产 heightForWidth（非同源恒真）；生产层 setFixedHeight 随内容贴合——
-    # 只抬 minimum 的写法长文换短文时布局不回收当前高，Windows CI 红即此形态。
+    # 复制生产计算公式（非同源恒真）；生产层同样 fontMetrics.boundingRect 一下源
+    # 现算 setFixedHeight——只抬 minimum 的写法长文换短文不回收（Windows CI 首红），
+    # heightForWidth 读 QLabel 文档缓存 setText 后偶发滞后（Windows CI 二红）。
     hint.setText("用法说明")
     win._sync_nfo_lib_form_fields()
     app.processEvents()
