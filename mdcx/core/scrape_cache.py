@@ -17,6 +17,40 @@ from ..signals import signal
 MAX_RETRY_COUNT = 3
 _BATCH_COMMIT_SIZE = 32
 
+# done记录的解析代版本：解析/数据修正逻辑有修复的发版时把此常量 +1，
+# 旧版本写的 done 断点续刮自动放行重刮（修复随发版自动追平存量库，TODO #1-B）。
+SCRAPE_SCHEMA_VERSION = 1
+
+# 站点明确"查无此番号"的失败写 7 天负面缓存：期内跳过不重刮、不占自动重试
+# 预算、不进恢复队列（TODO #1-A）。到期自动放行——站点可能后来才收录。
+NOT_FOUND_TTL_SECONDS = 7 * 86400
+FAILURE_REASON_NOT_FOUND = "not_found"
+
+# 明确"查无"语义词表——只收判定确定性高的短语，宽泛词（如裸"不存在"）会误伤
+# "文件不存在"这类真实故障，把它们关进 7 天不重试的黑盒。
+_NOT_FOUND_HINTS = (
+    "未匹配到番号",
+    "未找到番号",
+    "番号不存在",
+    "查无此番号",
+    "番号未收录",
+    "未收录该番号",
+    "此番号不存在",
+    "404",
+    "not found",
+)
+
+
+def classify_failure(error: str) -> str:
+    """从失败文本判定失败类别。当前仅识别 not_found；其余返回 ""（普通失败）。"""
+    if not error:
+        return ""
+    lowered = error.lower()
+    for hint in _NOT_FOUND_HINTS:
+        if hint in lowered:
+            return FAILURE_REASON_NOT_FOUND
+    return ""
+
 
 @dataclass
 class ScrapeState:
@@ -30,6 +64,8 @@ class ScrapeState:
     scraped_at: float = 0.0  # 最后处理时间戳
     error: str = ""  # 最后错误信息（失败时）
     origin_path: str = ""  # 失败前的源文件路径（失败文件被移入 failed_folder 时与 file_path 不同）
+    failure_reason: str = ""  # 失败类别（""普通 / "not_found" 站点查无，走负面缓存）
+    state_version: int = 0  # 记录写入时的解析代版本（SCRAPE_SCHEMA_VERSION）
 
 
 class ScrapeStateCache:
@@ -79,6 +115,11 @@ class ScrapeStateCache:
             # 跨会话恢复（list_pending）随之失效
             if "origin_path" not in columns:
                 conn.execute("ALTER TABLE scrape_state ADD COLUMN origin_path TEXT NOT NULL DEFAULT ''")
+            # 迁移：failure_reason 失败类别（负面缓存）与 state_version 解析代版本（TODO #1-A/B）
+            if "failure_reason" not in columns:
+                conn.execute("ALTER TABLE scrape_state ADD COLUMN failure_reason TEXT NOT NULL DEFAULT ''")
+            if "state_version" not in columns:
+                conn.execute("ALTER TABLE scrape_state ADD COLUMN state_version INTEGER NOT NULL DEFAULT 0")
             conn.commit()
             self._conn = conn
             self._pending_writes = 0
@@ -169,8 +210,8 @@ class ScrapeStateCache:
 
     def get_state(self, file_path: Path) -> ScrapeState | None:
         rows = self._fetch(
-            "SELECT file_path, mtime, status, number, fail_count, scraped_at, error, origin_path "
-            "FROM scrape_state WHERE file_path = ?",
+            "SELECT file_path, mtime, status, number, fail_count, scraped_at, error, origin_path, "
+            "failure_reason, state_version FROM scrape_state WHERE file_path = ?",
             (str(file_path),),
         )
         if not rows:
@@ -185,6 +226,8 @@ class ScrapeStateCache:
             scraped_at=row["scraped_at"],
             error=row["error"],
             origin_path=row["origin_path"],
+            failure_reason=row["failure_reason"],
+            state_version=row["state_version"],
         )
 
     def set_done(
@@ -200,8 +243,9 @@ class ScrapeStateCache:
         summary_json = json.dumps(summary, ensure_ascii=False) if summary else ""
         self._execute(
             """
-            INSERT INTO scrape_state (file_path, mtime, status, number, fail_count, scraped_at, error, summary_json)
-            VALUES (?, ?, 'done', ?, 0, ?, '', ?)
+            INSERT INTO scrape_state (file_path, mtime, status, number, fail_count, scraped_at, error,
+                                      summary_json, failure_reason, state_version)
+            VALUES (?, ?, 'done', ?, 0, ?, '', ?, '', ?)
             ON CONFLICT(file_path) DO UPDATE SET
                 mtime=excluded.mtime,
                 status='done',
@@ -209,14 +253,22 @@ class ScrapeStateCache:
                 fail_count=0,
                 scraped_at=excluded.scraped_at,
                 error='',
-                summary_json=excluded.summary_json
+                summary_json=excluded.summary_json,
+                failure_reason='',
+                state_version=excluded.state_version
             """,
-            (str(file_path), mtime, number, time.time(), summary_json),
+            (str(file_path), mtime, number, time.time(), summary_json, SCRAPE_SCHEMA_VERSION),
             commit=commit,
         )
 
     def set_failed(
-        self, file_path: Path, mtime: float, error: str = "", commit: bool = True, origin_path: Path | None = None
+        self,
+        file_path: Path,
+        mtime: float,
+        error: str = "",
+        commit: bool = True,
+        origin_path: Path | None = None,
+        failure_reason: str = "",
     ) -> None:
         """记录失败状态。
 
@@ -226,19 +278,22 @@ class ScrapeStateCache:
         """
         import time
 
+        reason = failure_reason or classify_failure(error)
         self._execute(
             """
-            INSERT INTO scrape_state (file_path, mtime, status, number, fail_count, scraped_at, error, origin_path)
-            VALUES (?, ?, 'failed', '', 1, ?, ?, ?)
+            INSERT INTO scrape_state (file_path, mtime, status, number, fail_count, scraped_at, error,
+                                      origin_path, failure_reason)
+            VALUES (?, ?, 'failed', '', 1, ?, ?, ?, ?)
             ON CONFLICT(file_path) DO UPDATE SET
                 mtime=excluded.mtime,
                 status='failed',
                 fail_count=fail_count + 1,
                 scraped_at=excluded.scraped_at,
                 error=excluded.error,
-                origin_path=excluded.origin_path
+                origin_path=excluded.origin_path,
+                failure_reason=excluded.failure_reason
             """,
-            (str(file_path), mtime, time.time(), error, str(origin_path) if origin_path else ""),
+            (str(file_path), mtime, time.time(), error, str(origin_path) if origin_path else "", reason),
             commit=commit,
         )
 
@@ -254,8 +309,21 @@ class ScrapeStateCache:
         """
         if force:
             return False
+        import time
+
         state = self.get_state(file_path)
-        if state is None or state.status != "done":
+        if state is None:
+            return False
+        if state.status == "failed":
+            if state.failure_reason == FAILURE_REASON_NOT_FOUND:
+                # 负面缓存：TTL 内跳过；文件被改过（改名/修正番号笔误）立即放行；到期自动重刮
+                if abs(state.mtime - mtime) >= 1e-6:
+                    return False
+                return (time.time() - state.scraped_at) < NOT_FOUND_TTL_SECONDS
+            return False
+        if state.status != "done":
+            return False
+        if state.state_version != SCRAPE_SCHEMA_VERSION:
             return False
         return abs(state.mtime - mtime) < 1e-6
 
@@ -266,6 +334,9 @@ class ScrapeStateCache:
         """
         state = self.get_state(file_path)
         if state is None or state.status != "failed":
+            return False
+        if state.failure_reason == FAILURE_REASON_NOT_FOUND:
+            # 站点查无走 TTL 与手动重置通道，不占失败重试预算
             return False
         return state.fail_count < max_retries
 
@@ -279,7 +350,7 @@ class ScrapeStateCache:
         existing：本次扫描到的源文件集合，仅返回其中仍存在的文件。
         """
         rows = self._fetch(
-            "SELECT file_path, fail_count FROM scrape_state WHERE status = 'failed'",
+            "SELECT file_path, fail_count FROM scrape_state WHERE status = 'failed' AND failure_reason != 'not_found'",
         )
         pending = []
         for row in rows:
@@ -351,6 +422,7 @@ class ScrapeStateCache:
             "done": 0,
             "failed": 0,
             "failed_exhausted": 0,
+            "not_found": 0,
             "total": 0,
             "db_path": str(self._db_path),
             "db_size_kb": 0,
@@ -363,6 +435,11 @@ class ScrapeStateCache:
                 result["done"] = cnt
             elif s == "failed":
                 result["failed"] = cnt
+        nf = self._fetch(
+            "SELECT COUNT(*) AS cnt FROM scrape_state WHERE status='failed' AND failure_reason='not_found'",
+        )
+        if nf:
+            result["not_found"] = nf[0]["cnt"]
         ex = self._fetch(
             "SELECT COUNT(*) AS cnt FROM scrape_state WHERE status='failed' AND fail_count >= ?",
             (MAX_RETRY_COUNT,),
@@ -378,8 +455,9 @@ class ScrapeStateCache:
     def list_failed_detail(self, limit: int = 500) -> list[ScrapeState]:
         """返回失败记录详情（含 error/fail_count），按最后处理时间倒序，限 limit 条。"""
         rows = self._fetch(
-            "SELECT file_path, mtime, status, number, fail_count, scraped_at, error, origin_path "
-            "FROM scrape_state WHERE status='failed' ORDER BY scraped_at DESC LIMIT ?",
+            "SELECT file_path, mtime, status, number, fail_count, scraped_at, error, origin_path, "
+            "failure_reason, state_version FROM scrape_state WHERE status='failed' "
+            "ORDER BY scraped_at DESC LIMIT ?",
             (limit,),
         )
         return [
@@ -392,6 +470,8 @@ class ScrapeStateCache:
                 scraped_at=r["scraped_at"],
                 origin_path=r["origin_path"],
                 error=r["error"],
+                failure_reason=r["failure_reason"],
+                state_version=r["state_version"],
             )
             for r in rows
         ]
@@ -399,7 +479,37 @@ class ScrapeStateCache:
     def delete_state(self, file_path: Path) -> bool:
         """删除单文件状态记录（强制下次重刮）。
 
-        删记录后 should_skip/should_retry 均返回 False，下次扫描自然入队重新刮削。
-        返回是否删除成功（记录不存在也返回 True，语义为「不再有该记录」）。
+        删记录后 should_skip/should_retry 均返回 False，下次扫描自然重新刮削处理。
+        记录不存在也返回 True，语义是"该记录不存在"。
         """
         return self._execute("DELETE FROM scrape_state WHERE file_path = ?", (str(file_path),))
+
+    # 字段缺失检测默认只看这些关键字段（tags/series 天生可空不计）；
+    # runtime 的 "0" 视为缺失——站点改版期刮到全空片的典型特征（TODO #1-C）
+    INCOMPLETE_DEFAULT_FIELDS = ("title", "actors", "release", "runtime")
+
+    def list_incomplete(self, required_fields: tuple[str, ...] | list[str] = INCOMPLETE_DEFAULT_FIELDS) -> list[dict]:
+        """列出"done 但关键字段为空"的记录（数据源=刮削时存的结果摘要）。
+
+        返回 [{file_path, number, missing: [缺失字段名]}]。无 summary_json 的
+        旧记录不列出——没有摘要就没有判定依据，旧的不滥判——但这类记录会被字段检测漏掉（已知边界）。
+        """
+        rows = self._fetch(
+            "SELECT file_path, number, summary_json FROM scrape_state WHERE status = 'done' AND summary_json != ''",
+        )
+        result: list[dict] = []
+        for row in rows:
+            try:
+                summary = json.loads(row["summary_json"])
+            except (ValueError, TypeError):
+                continue
+            if not isinstance(summary, dict):
+                continue
+            missing: list[str] = []
+            for field in required_fields:
+                value = summary.get(field)
+                if value in (None, "", [], "0"):
+                    missing.append(field)
+            if missing:
+                result.append({"file_path": row["file_path"], "number": row["number"], "missing": missing})
+        return result

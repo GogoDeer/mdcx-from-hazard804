@@ -337,3 +337,118 @@ def test_set_failed_accumulates_fail_count_via_origin_key(cache: ScrapeStateCach
     state = cache.get_state(p)
     assert state.fail_count == 2
     assert state.origin_path == str(p)
+
+
+# ---------------------------------------------------------------------------
+# TODO #1 刮削缓存三增强（2026-09-23）：A 404 负面缓存 / B 缓存 key 版本化 /
+# C 字段缺失检测。改这三组语义前先回看此处断言的原始缺口。
+# ---------------------------------------------------------------------------
+
+
+class TestNotFoundNegativeCache:
+    """A：站点明确查无的失败按 7 天负面缓存跳过，不烧重试、不排队。"""
+
+    def test_not_found_skipped_within_ttl(self, cache: ScrapeStateCache, tmp_path: Path):
+        p = tmp_path / "a.mp4"
+        cache.set_failed(p, mtime=100.0, error="搜索结果: 未匹配到番号！", failure_reason="not_found")
+        assert cache.should_skip(p, mtime=100.0) is True  # 期内跳过（负面）
+        assert cache.should_skip(p, mtime=100.0, force=True) is False  # 手动强制可放行
+        assert cache.should_skip(tmp_path / "unseen.mp4", mtime=1.0) is False  # 无记录不受影响
+
+    def test_not_found_expiry_allows_retry(self, cache: ScrapeStateCache, tmp_path: Path):
+        p = tmp_path / "b.mp4"
+        cache.set_failed(p, mtime=100.0, error="番号不存在", failure_reason="not_found")
+        cache._conn.execute(
+            "UPDATE scrape_state SET scraped_at = ? WHERE file_path = ?",
+            (__import__("time").time() - 8 * 86400, str(p)),
+        )
+        cache._conn.commit()
+        assert cache.should_skip(p, mtime=100.0) is False  # 7 天后放行重刮
+
+    def test_not_found_not_in_retry_or_pending(self, cache: ScrapeStateCache, tmp_path: Path):
+        p = tmp_path / "c.mp4"
+        cache.set_failed(p, mtime=100.0, error="未匹配", failure_reason="not_found")
+        assert cache.should_retry(p) is False
+        assert p not in cache.list_pending(existing={p})
+
+    def test_transient_retry_path_unchanged(self, cache: ScrapeStateCache, tmp_path: Path):
+        p = tmp_path / "d.mp4"
+        cache.set_failed(p, mtime=100.0, error="连接重置")
+        assert cache.should_skip(p, mtime=100.0) is False  # 普通失败行为不变
+        assert cache.should_retry(p) is True
+        assert p in cache.list_pending(existing={p})
+
+    def test_classify_failure(self):
+        from mdcx.core.scrape_cache import classify_failure
+
+        assert classify_failure("搜索结果: 未匹配到番号！") == "not_found"
+        assert classify_failure("番号不存在") == "not_found"
+        assert classify_failure("HTTP 404 Not Found") == "not_found"
+        assert classify_failure("Connection reset by peer") == ""
+        assert classify_failure("") == ""
+
+
+class TestSchemaVersionInvalidation:
+    """B：解析修复版发布后，旧版本写的 done 自动失效重刮。"""
+
+    def test_old_version_done_revalidated(self, cache: ScrapeStateCache, tmp_path: Path):
+        from mdcx.core.scrape_cache import SCRAPE_SCHEMA_VERSION
+
+        p = tmp_path / "e.mp4"
+        cache.set_done(p, mtime=100.0, number="ABC-1")
+        assert cache.should_skip(p, mtime=100.0) is True
+        # 模拟"这条 done 是上一代代码写的"
+        cache._conn.execute("UPDATE scrape_state SET state_version = 0 WHERE file_path = ?", (str(p),))
+        cache._conn.commit()
+        assert SCRAPE_SCHEMA_VERSION >= 1
+        assert cache.should_skip(p, mtime=100.0) is False
+        # 重新刮成功 → 版本追平，恢复跳过
+        cache.set_done(p, mtime=100.0, number="ABC-1")
+        assert cache.should_skip(p, mtime=100.0) is True
+
+    def test_failed_not_blocked_by_version(self, cache: ScrapeStateCache, tmp_path: Path):
+        p = tmp_path / "f.mp4"
+        cache.set_failed(p, mtime=100.0, error="超时")
+        cache._conn.execute("UPDATE scrape_state SET state_version = 0 WHERE file_path = ?", (str(p),))
+        cache._conn.commit()
+        assert cache.should_retry(p) is True  # 版本失效语义只针对 done
+
+
+class TestListIncomplete:
+    """C：done 但关键字段空的记录可批量查出（数据取 summary_json）。"""
+
+    def _done(self, cache, tmp_path, name, **fields):
+        p = tmp_path / name
+        summary = {
+            "number": "NUM-1",
+            "title": fields.get("title", "正常标题"),
+            "tags": fields.get("tags", []),
+            "series": "",
+            "studio": "",
+            "actors": fields.get("actors", ["明日花"]),
+            "release": fields.get("release", "2024-01-01"),
+            "runtime": fields.get("runtime", "120"),
+        }
+        cache.set_done(p, mtime=1.0, number="NUM-1", summary=summary)
+        return p
+
+    def test_incomplete_detection(self, cache: ScrapeStateCache, tmp_path: Path):
+        ok = self._done(cache, tmp_path, "ok.mp4")
+        no_title = self._done(cache, tmp_path, "t.mp4", title="")
+        zero_runtime = self._done(cache, tmp_path, "r.mp4", runtime="0")
+        no_actors = self._done(cache, tmp_path, "a.mp4", actors=[])
+        no_summary = tmp_path / "ns.mp4"
+        cache.set_done(no_summary, mtime=1.0, number="N2")  # 无摘要记录保守不列
+        result = cache.list_incomplete()
+        paths = {Path(r["file_path"]) for r in result}
+        assert paths == {no_title, zero_runtime, no_actors}
+        assert ok not in paths and no_summary not in paths
+        row = next(r for r in result if Path(r["file_path"]) == zero_runtime)
+        assert row["number"] == "NUM-1"
+        assert "runtime" in row["missing"]
+
+    def test_custom_required_fields(self, cache: ScrapeStateCache, tmp_path: Path):
+        p = self._done(cache, tmp_path, "g.mp4")
+        assert {Path(r["file_path"]) for r in cache.list_incomplete(["release"])} == set()  # release 非空不列
+        cache.set_done(p, mtime=1.0, number="NUM-1", summary={"number": "NUM-1", "title": "", "actors": []})
+        assert p in {Path(r["file_path"]) for r in cache.list_incomplete(["title", "actors"])}
