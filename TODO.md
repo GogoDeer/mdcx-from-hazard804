@@ -8,7 +8,7 @@
 
 ## P1 优先实现（解决日常痛点，见效快）
 
-### 1. 刮削缓存三项增强 ⬜（`core/scrape_cache.py`）
+### 1. 刮削缓存三项增强 ✅（2026-09-23 实现：not_found 负面缓存 TTL 7 天 / SCRAPE_SCHEMA_VERSION 写点 + 旧代失效 / list_incomplete + 缓存管理页「检测缺字段记录并重置」按钮；13 测试；后续解析修复发版记得 bump 版本常量）
 - **价值：高**　**难度：中**（3-5 天）
 - A. **404 负面缓存**：`ScrapeState` 加 `failure_reason`，`NOT_FOUND` 缓存 7 天期内跳过，其他失败仍走重试
 - B. **缓存 key 版本化**：表加 `schema_version` 列，解析逻辑修复后递增版本号让旧 done 自动失效
