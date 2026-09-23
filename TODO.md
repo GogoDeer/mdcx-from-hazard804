@@ -214,6 +214,7 @@
 - 参考 mdcz `media-store`：所有文件引用以「媒体根 id + 相对路径」表达，不存绝对路径
 - 直击我们云盘映射盘历史坑（Z: 盘 samefile 假阳性/静默吞写/盘符漂移）与 NAS 挂载场景；#12 journal 若实现，plan 里的文件引用应采用同款 ref 结构
 - 建议与 #11/#12 合并设计，单独立项避免重复改造
+- OpenAver 0.16.5 同款方案佐证（2026-09-23 复查）：**单一 data_root resolver** 收斂全部位置推算 + 首次启动"安全定版"（定版失败两个启动入口都给固定可见出口）+ 旧目录原地升格 + 发行包不含数据根 + 配置丢失自动重建。桌面形态下比 rootId 改造轻，适合作为我们路径规范的 UX 基线（失败必须可见，与云盘静默吞写教训同族）
 
 ### 24. 演员源补充：avwikidb / jav321 / ppvdatabank ⬜
 - **价值：低-中**　**难度：中**（每站 1-2 天）
@@ -273,6 +274,12 @@
 - **unofficial-api-for-missav**（2026-09-20 已深挖）：许可实为 **AGPL-3.0**（GitHub 识别失败才显示 NOASSERTION）——开源，站点知识可学，但 AGPL↔GPLv3 双向不兼容，代码行不可复制。核心情报逐一核对后**我们已全覆盖**：Recombee API+HMAC-SHA1 签名（我们 missav_api.py 同源实现）、`safari17_2_ios` 指纹必用（TODO #13 已实现且结论一致——桌面 Chrome 403/iOS Safari 200）、OG meta 字段提取+多候选回退（我们 missav.py 已有 actor/director/date/duration/tags 链）。知识增量存档备查：①视频 CDN 为 **surrit.com**（`surrit.com/{uuid}/playlist.m3u8`，m3u8 基址藏在 JS 里按 `|` 分段逆序拼接，三级回退：packed JS→直链→surrit）——未来若做"预览播放集成"走此路；②parser 用 selectolax（比 parsel 快，我们万级批量解析非瓶颈，不跟进）；③"Request blocked → 换 impersonate + 下载并发降 1"与我们的 CF 指纹轮换互证
 - **amane 的 AI 助理/AI_POLICY**：与 #6 AI 打标签同方向但更大（自然语言操作全库），待 amane 深挖后再决定是否升级为独立条目
 - **OpenAver 的 AI-operable REST API + capabilities manifest**：桌面端暴露本地 REST 接口供 AI 工具操作，属产品路线决策，暂存档
+- **2026-09-23 三仓增量复查（javdb-cli/OpenAver/amane 均有当日推送）**：
+  - javdb-cli v0.8.0-0.8.2：变化集中在其自身 CI/发布工程（可信验证、不可变移交、fork-safe 冒烟门）与 HLS remux 修复，**App API 端点面零新增**——#9/#29 的端点清单与结论维持有效
+  - amane 09-21~23 三个 fix：①「javbus 检索回退只接受番号相符」——我们 `javbus.py:is_match` 已有同款守卫且归一更完整（FC2 剥 PPV 双向归一，全库审查 A5 强化）；②「长文本存纯文本并移除简介 CDATA」——我们 `NfoInclude.OUTLINE_NO_CDATA` 默认已不带 CDATA 包裹且可配置，方向一致无需改；web 端列表/重试条与桌面 GUI 无对应
+  - 结论：三仓近三日**无需码增量**；后续增量扫描建议冻结至下轮站点改版潮，时间优先投 P1 实装（#3 别名声明式配置、#1 刮削缓存三项）**
+  - OpenAver 152c/d 新域观察（暂不做）：人脸自动对焦辅助封面裁切——检测无设备/超时自判停用/用户显式关闭不被系统覆写/灯箱手动裁切。我们 `controllers/cut_window.py` 固定模板裁图，若引入人脸优先裁切需背 OpenCV 依赖，等需求出现再评估
+
 
 ### 31. AI 生成 Issue 治理政策 ✅（2026-09-20 实现：.github/AI_POLICY.md + 双模板披露下拉 + README 贡献小节）
 - **价值：高**　**难度：低**（0.5 天）
