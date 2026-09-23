@@ -270,7 +270,8 @@ class JavdbApiCrawler(BaseCrawler):
 
     @base_url.setter
     def base_url(self, value: str):
-        super().base_url = value
+        # 与基类 setter 同写任务级 ContextVar（mypy 不支持 super() 属性赋值形态）
+        self._base_url_ctx.set(value)
 
     @staticmethod
     def _number_key(value: str) -> str:
