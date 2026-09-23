@@ -37,7 +37,8 @@
 ## 环境与并发约定
 
 - **环境重置后才建环境**：`pip3 install --break-system-packages uv -i 清华镜像` → `uv python install 3.13`（`UV_PYTHON_INSTALL_MIRROR` ghproxy）→ `uv sync`（后台 20 分钟级）+ `export UV_DEFAULT_INDEX=清华镜像`。**持 UV_DEFAULT_INDEX 跑 `uv run` 会把 uv.lock 全部 index URL 重写为镜像域（禁入库），提交前 `git checkout -- uv.lock` 核对**。PyQt 测试装 ci.yaml apt 列表并 `QT_QPA_PLATFORM=offscreen`。
-- background_terminal 是 sh(dash)：`[[ ]]` 会空转，POSIX 语法或 `bash -c`；后台终端内 `git credential fill` 拿不到凭据，token 在前台 bash 取。仓库根 `config.json` 是脏配置，验证配置/网络用临时配置指 `manager.path`；devbox 代理 127.0.0.1:7890 可能无进程，排查先临时关。
+- background_terminal 是 sh(dash)：`[[ ]]` 会空转，POSIX 语法或 `bash -c`；`&>` 报 Bad fd number 用 `> f 2>&1`；zsh 前台分隔符 `===` 会被通配展开报错，echo 单独引号或分次调用；后台终端内 `git credential fill` 拿不到凭据，token 在前台 bash 取。仓库根 `config.json` 是脏配置，验证配置/网络用临时配置指 `manager.path`；devbox 代理 127.0.0.1:7890 可能无进程，排查先临时关。
+- **爬虫任务级状态与类型检查坑**（2026-09-23 并发审查）：base_url/镜像轮询等按 ContextVar 任务隔离后，协程内 `.set()` 不回传外部——测试断任务内状态必须把取值随返回值带出协程，在 `asyncio.run` 外读恒见初始值。pre-push 含全量 mypy(约4min)：`super().prop = v` 报 Invalid assignment target、`Base.prop.fget/.fset` 委托在泛型基类上报 attr-defined，子类覆写 property 委托基类一律直写底层 ContextVar。
 - 后台线程跑异步一律走全局 `AsyncBackgroundExecutor`（禁手动 new_event_loop/run_until_complete/run sync 在 QThread，AST 哨兵锁；curl_cffi 定时器注册死 loop → Windows "Python-CFFI error"）；后台协程 `utils/qt_thread.py::run_in_background`，结果经 Qt signal 回主线程，新增后跑 `scripts/check_thread_safety.py`；文件间 FIRST_COMPLETED 滑窗、文件内 gather。curl_cffi 流式关闭=`quit_now.set()`+`await aclose()`；close() 只是发起 abort，内部任务必须有人等；"Task was destroyed"先疑 cancel 无人消费；sync/async 成对入口成对审计（取消打断收尾租约泄漏三件套：shield 释放/finally 恒释/逐实例 suppress）。内网服务（Emby 等）走轻量 httpx 直连，不蹭爬虫指纹栈。LogBuffer 归因：写入按 `_ROOT` contextvar，`process_one_file` 入口 `new_root()` 断兄弟继承。
 - `CancelledError` 在结果收集点与 Exception 同级软着陆（单项记 CANCELLED），整轮取消只由 cancel_event 负责。Emby/Jellyfin `UpdateItem` 对 Genres/Tags/ProviderIds 空引用坑——payload 三者恒非 null；日期归一化收口模型层单一出口。
 
