@@ -276,7 +276,9 @@ def test_creat_folder_samestat_guard_rejects_metadata_collision(tmp_path, monkey
 
     fn_stat = _stat_result(ino=5, dev=7, nbytes=100, mtime_ns=1_000)
     f_stat = _stat_result(ino=5, dev=7, nbytes=200, mtime_ns=1_000)
-    stats = {"/x/a.mp4": f_stat, "/s/a.mp4": fn_stat}
+    old_src = tmp_path / "a.mp4"
+    dst = tmp_path / "a2.mp4"
+    stats = {str(old_src): f_stat, str(dst): fn_stat}
 
     async def fake_stat(path):
         return stats[str(path)]
@@ -291,8 +293,6 @@ def test_creat_folder_samestat_guard_rejects_metadata_collision(tmp_path, monkey
     monkeypatch.setattr(aos.path, "exists", fake_exists)
     monkeypatch.setattr(aos.path, "isdir", fake_isdir)
 
-    from pathlib import Path
-
     other = OtherInfo.empty()
     json_data = BaseCrawlerResult.__new__(BaseCrawlerResult)
     json_data.title = ""
@@ -300,11 +300,11 @@ def test_creat_folder_samestat_guard_rejects_metadata_collision(tmp_path, monkey
         file_mod.creat_folder(
             other,
             json_data,
-            Path("/s"),
-            Path("/x/a.mp4"),
-            Path("/s/a.mp4"),
-            Path("/s/a-thumb.jpg"),
-            Path("/s/a-poster.jpg"),
+            str(tmp_path),
+            old_src,
+            dst,
+            tmp_path / "a-thumb.jpg",
+            tmp_path / "a-poster.jpg",
         )
     )
     assert ok is False, "dev/ino 相同但大小不同仍被判同一文件——护栏失效"
@@ -324,7 +324,9 @@ def test_creat_folder_samestat_accepts_identical_metadata(tmp_path, monkeypatch)
     monkeypatch.setattr(manager.config, "update_mode", "b", raising=False)
 
     same = _stat_result(ino=5, dev=7, nbytes=100, mtime_ns=1_000)
-    stats = {"/x/a.mp4": same, "/s/a.mp4": same}
+    old_src = tmp_path / "a.mp4"
+    dst = tmp_path / "a2.mp4"
+    stats = {str(old_src): same, str(dst): same}
 
     async def fake_stat(path):
         return stats[str(path)]
@@ -339,21 +341,19 @@ def test_creat_folder_samestat_accepts_identical_metadata(tmp_path, monkeypatch)
     monkeypatch.setattr(aos.path, "exists", fake_exists)
     monkeypatch.setattr(aos.path, "isdir", fake_isdir)
 
-    from pathlib import Path
-
     other = OtherInfo.empty()
     ok = asyncio_run_compat(
         file_mod.creat_folder(
             other,
             _blank_result(),
-            Path("/s"),
-            Path("/x/a.mp4"),
-            Path("/s/a.mp4"),
-            Path("/s/a-thumb.jpg"),
-            Path("/s/a-poster.jpg"),
+            str(tmp_path),
+            old_src,
+            dst,
+            tmp_path / "a-thumb.jpg",
+            tmp_path / "a-poster.jpg",
         )
     )
     assert ok is True
     assert other.dont_move_movie is True
-    assert other.thumb_path == Path("/s/a-thumb.jpg")
-    assert other.poster_path == Path("/s/a-poster.jpg")
+    assert other.thumb_path == tmp_path / "a-thumb.jpg"
+    assert other.poster_path == tmp_path / "a-poster.jpg"
