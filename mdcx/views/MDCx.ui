@@ -3008,6 +3008,10 @@
                     <property name="geometry"><rect><x>190</x><y>300</y><width>130</width><height>28</height></rect></property>
                     <property name="text"><string>重置选中记录</string></property>
                   </widget>
+                  <widget class="QPushButton" name="pushButton_scrape_cache_incomplete">
+                    <property name="geometry"><rect><x>330</x><y>300</y><width>200</width><height>28</height></rect></property>
+                    <property name="text"><string>检测缺字段记录并重置</string></property>
+                  </widget>
                   <widget class="QPushButton" name="pushButton_scrape_cache_clear">
                     <property name="geometry"><rect><x>540</x><y>300</y><width>141</width><height>28</height></rect></property>
                     <property name="text"><string>清空全部缓存</string></property>

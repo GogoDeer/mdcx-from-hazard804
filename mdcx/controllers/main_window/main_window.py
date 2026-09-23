@@ -4752,6 +4752,41 @@ class MyMAinWindow(QMainWindow):
         signal_qt.show_log_text(f" 已重置 {len(paths)} 条记录（下次刮削将重新处理）")
         self.pushButton_scrape_cache_refresh_clicked()
 
+    def pushButton_scrape_cache_incomplete_clicked(self) -> None:
+        """「done 但关键字段为空」记录检测：确认后重置，下次刮削重刮补全（TODO #1-C）。"""
+        cache = self._open_scrape_cache()
+        if cache is None:
+            return
+        try:
+            rows = cache.list_incomplete()
+        finally:
+            cache.close()
+        if not rows:
+            signal_qt.show_log_text(" 🔍 缺字段检测：没有「已完成但标题/演员/发行/时长为空」的记录")
+            return
+        preview = "\n".join(
+            f"{Path(r['file_path']).name}（{r['number'] or '?'}）缺: {'、'.join(r['missing'])}" for r in rows[:10]
+        )
+        more = f"\n… 共 {len(rows)} 条" if len(rows) > 10 else ""
+        reply = QMessageBox.question(
+            self,
+            "缺字段记录检测",
+            f"检测到 {len(rows)} 条已完成但关键字段为空的记录（站点改版期刮到空数据的典型特征），"
+            f"重置后将在下次刮削重新处理。\n\n{preview}{more}",
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        cache = self._open_scrape_cache()
+        if cache is None:
+            return
+        try:
+            for r in rows:
+                cache.delete_state(Path(r["file_path"]))
+        finally:
+            cache.close()
+        signal_qt.show_log_text(f" 🔄 已重置 {len(rows)} 条缺字段记录，下次刮削将重新刮削补全")
+        self.pushButton_scrape_cache_refresh_clicked()
+
     def pushButton_scrape_cache_clear_clicked(self) -> None:
         reply = QMessageBox.question(
             self,
