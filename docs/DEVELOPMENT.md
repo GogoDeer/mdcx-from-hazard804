@@ -91,7 +91,7 @@ FileInfo → CrawlerInput → CrawlTask
 
 ### 图片处理（mdcx/core/image.py）
 
-图片下载、多尺寸修复、水印添加（9 宫格位置，支持文字水印）。
+图片下载、多尺寸修复、水印添加（右下角等四角位置贴图标图章，见 `mdcx/base/image.py` 的 `add_mark_thread`）。
 
 ### 翻译（mdcx/core/translate.py）
 

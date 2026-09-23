@@ -23,7 +23,7 @@ MDCx-diy 是一个桌面工具，自动从 36 个网站抓取视频文件的元�
 
 ## 快速安装
 
-从 [GitHub Releases](https://github.com/cdlongbow/mdcx-diy/releases) 下载对应系统的安装包或可执行文件。Linux 首次运行前执行 `chmod +x MDCx`，再运行 `./MDCx`。
+从 [GitHub Releases](https://github.com/cdlongbow/mdcx-diy/releases) 下载对应系统的安装包或可执行文件。Linux 下载的是单文件可执行程序（文件名形如 `MDCx-<版本>-linux-x86_64-<提交号>`），首次运行前执行 `chmod +x <该文件>`，再以该文件名运行。
 
 详细安装说明：[docs/INSTALL.md](docs/INSTALL.md)
 

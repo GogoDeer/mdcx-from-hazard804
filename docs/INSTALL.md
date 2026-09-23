@@ -2,7 +2,7 @@
 
 ## 系统要求
 
-- **操作系统**：Windows 10+ / macOS 11+ / Linux（Ubuntu 20.04+、Debian 11+、CentOS 8+）
+- **操作系统**：Windows 10+ / macOS 11+ / Linux（Release 在 GitHub ubuntu-latest 上构建，要求发行版 glibc 不低于对应版本，如 Ubuntu 24.04+/Debian 13+；旧发行版建议用源码方式运行）
 - **Python**：3.13.4 或更高版本（源码运行需要）
 - **网络**：需要能访问数据源网站
 
