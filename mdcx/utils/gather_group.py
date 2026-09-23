@@ -40,20 +40,29 @@ class GatherGroup[T = Any]:
         if not self._tasks:
             return
 
-        # 支持组级别的超时控制（可选）
-        try:
-            if self._timeout is not None:
-                self._results = await asyncio.wait_for(
-                    asyncio.gather(*self._tasks, return_exceptions=True), timeout=self._timeout
-                )
-            else:
-                # 使用原有的 gather 等待所有任务完成
-                self._results = await asyncio.gather(*self._tasks, return_exceptions=True)
-        except TimeoutError:
-            # 超时时，asyncio.wait_for 会自动取消内部的 gather 任务
-            # 我们只需要创建超时异常结果，不需要手动取消 Coroutine
+        futures = [asyncio.ensure_future(t) for t in self._tasks]
+        # 支持组级别的超时控制（可选）。
+        # 超时只取消未完成任务并逐个填 TimeoutError——已完成任务的成功结果必须保留
+        # （2026-09-23 审查：wait_for(gather) 超时会连已完成结果一起丢弃，慢子请求拖满
+        # 整组即废掉全部成功详情，DMM 跨 category 合并因此整站降级）。
+        if self._timeout is not None:
+            _done, pending = await asyncio.wait(futures, timeout=self._timeout)
+            if pending:
+                for task in pending:
+                    task.cancel()
+                await asyncio.gather(*pending, return_exceptions=True)
             timeout_error = TimeoutError(f"GatherGroup 整体超时 ({self._timeout}s)")
-            self._results = [timeout_error] * len(self._tasks)
+            results: list[Any] = []
+            for fut in futures:
+                if fut.cancelled():
+                    results.append(timeout_error)
+                elif (exc := fut.exception()) is not None:
+                    results.append(exc)
+                else:
+                    results.append(fut.result())
+            self._results = results
+        else:
+            self._results = list(await asyncio.gather(*futures, return_exceptions=True))
 
     @property
     def results(self) -> list[T | Exception]:

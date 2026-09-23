@@ -10,6 +10,7 @@ from itertools import chain
 from typing import TYPE_CHECKING
 
 from ..config.enums import FixedScrapingType
+from ..config.manager import manager
 from ..config.models import FieldConfig, FieldPriorityConfig, Language, Website
 from ..gen.field_enums import CrawlerResultFields
 from ..manual import ManualConfig
@@ -33,9 +34,14 @@ MULTI_LANGUAGE_WEBSITES = [  # 支持多语言, language 参数有意义
     Website.JAVLIBRARY,
 ]
 
-# 整批站点请求的总超时（秒）：防止单个慢站点拖垮整批抓取
-# 借鉴 jav-pack-api 的 AbortSignal.timeout——主流程等待以总超时为界，超时未返回的站点降级为失败
-_CRAWLER_BATCH_TIMEOUT = 60.0
+
+# 整批站点请求的总超时（秒）：防止单个慢站点拖垮整批抓取。
+# 上限必须容纳批内最长站点窗口而非阉割它：DMM 的 GatherGroup 自调 timeout*(retry+1)*2、
+# javdb 系限流锁排队再叠一层，此前固定 60s 恰好斩杀 DMM 默认窗口（80s），
+# 超时被标记"请求超时"误导排查（2026-09-23 全面审查）。在单站点最坏窗口上 ×2 留排队余量。
+def _crawler_batch_timeout() -> float:
+    return max(60.0, float(manager.config.timeout) * (manager.config.retry + 1) * 4)
+
 
 # 同番号刮削结果的 TTL 缓存（秒）：同批次中相同番号的文件（如多 CD、重复文件）直接复用结果，
 # 避免对同一番号重复请求所有站点。缓存键包含文件路径，避免不同来源的同番号文件互相污染。
@@ -287,19 +293,15 @@ class FileScraper:
             return data
         return all_res.get((site, Language.UNDEFINED))
 
-    async def _call_crawler(
-        self, task_input: CrawlerInput, website: Website, timeout: float | None = 30
-    ) -> CrawlerResponse:
+    async def _call_crawler(self, task_input: CrawlerInput, website: Website) -> CrawlerResponse:
         """
         调用指定网站的爬虫函数
 
         Args:
             task_input (CrawlerInput): 包含爬虫所需的输入数据
             website (str): 网站名称
-            timeout (float | None): 请求超时时间，默认为30秒
 
         Raises:
-            asyncio.TimeoutError: 如果请求超时
             Exception: 爬虫函数抛出的异常
         """
         short_number = task_input.short_number
@@ -400,7 +402,7 @@ class FileScraper:
             tasks = {asyncio.ensure_future(_fetch_site(k)): k for k in pending_keys}
             done, pending = await asyncio.wait(
                 tasks,
-                timeout=_CRAWLER_BATCH_TIMEOUT,
+                timeout=_crawler_batch_timeout(),
                 return_when=asyncio.ALL_COMPLETED,
             )
             # 超时未完成的站点取消并标记失败，后续字段合并按失败跳过（不再二次请求）
