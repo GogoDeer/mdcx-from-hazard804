@@ -6,7 +6,7 @@
 
 - 简体中文回复；面向小白按"现象和影响 → 原因 → 可执行步骤"；日期一律北京时间 (UTC+8) 并注明。
 - 改动前说明内容与原因；**用户明确要求才提交/推送**；直接在当前分支操作。
-- 检查链：改 .py 后 `uv run quick-check`；提交/推送前 `uv run check --skip-hook-install`（pre-push hook 生效时会再全量一次，日常勿手动重复全量；**hooksPath 是本地 git config，环境重置后静默失效**——`git config core.hooksPath` 为空则补 `git config core.hooksPath .githooks`，同时恢复 pre-push 与署名 hook）。仅改 md 只需 `git diff --check`。全绿判定=退出码零 + 无 error 行（mypy 输出可能被 tail 截断；`ruff check` 过 ≠ format 过，改 .py 必须 `ruff format` 落地，`scripts/` 同在范围）。xlsx 出厂库校验按路径改动跳过。
+- 检查链：改 .py 后 `uv run quick-check`；提交前 `uv run check --skip-hook-install`。**pre-push 自动分流**（与 CI 一致）：推送范围全为 `.md`/`.mdx`/`.monkeycode/`/`docs/`/`wiki/` 时只查空白，含代码才全量——docs 提交秒推勿等全量；新分支无基线保守全量。**hooksPath 是本地 git config，环境重置后静默失效**——`git config core.hooksPath` 为空则补 `git config core.hooksPath .githooks`，同时恢复 pre-push 与署名 hook）。全绿判定=退出码零 + 无 error 行（mypy 输出可能被 tail 截断；`ruff check` 过 ≠ format 过，改 .py 必须 `ruff format` 落地，`scripts/` 同在范围）。xlsx 出厂库校验按路径改动跳过。
 - 禁 `git add -A` 裹残留（先 .gitignore 排除）；**commit message 不手写 Co-authored-by**（prepare-commit-msg hook 自动追加，手写重复）。
 - **changelog discipline**：提交前更新 changelog 当前版本条目；版本号归属用户、不擅自开新段；写法=用户视角发布说明（留议题号/现象/结果，删排查叙事与哈希）。未发版条目被后续议题取代时合并重写成最终形态。版本同步 `scripts/bump.py --version <YYYYMMDD> --name <X.Y.Z>`（需管道喂确认 y；`--check` 验四处一致）；**"已发版"判据=数字 tag 已推送**（`git ls-remote --tags origin`）。
 - 站点/爬虫/配置改动同步检查：UI 文案、README/docs、爬虫总数、`config/migrations.py` 旧值清洗（漏迁移→pydantic 校验失败→"保存不生效"）。**写死数字前 grep 代码核实**；高频漂移锚点：默认网站源顺序、代理域名列表、命名变量表、设置 Tab 名、字段优先级数、指纹池、默认窗口尺寸（`_adaptive_window_sizes` 原生/隐藏边框两档+矩阵逐档断言，改默认尺寸测试/文档三处同步）；爬虫数 README 四处+FEATURES 标题第五处。

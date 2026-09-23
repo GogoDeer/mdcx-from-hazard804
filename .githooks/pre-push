@@ -1,4 +1,47 @@
 #!/bin/sh
+# pre-push 钩子：仅文档改动只查空白问题；含代码改动跑全量自检。
+# 文档类判定与 CI「Classify changed files」一致：*.md / *.mdx / .monkeycode/ / docs/ / wiki/。
+# 新增分支（无远端基线）或范围解析失败时保守走全量。
+zero=0000000000000000000000000000000000000000
+ranges=""
+full=false
+
+while read -r _local_ref local_sha _remote_ref remote_sha; do
+  [ "$local_sha" = "$zero" ] && continue
+  if [ "$remote_sha" = "$zero" ] || ! git cat-file -e "${remote_sha}^{commit}" 2>/dev/null; then
+    full=true
+    continue
+  fi
+  ranges="$ranges$remote_sha $local_sha
+"
+  if git diff --name-only "$remote_sha" "$local_sha" | grep -qvE '(\.md|\.mdx)$|^(\.monkeycode/|docs/|wiki/)'; then
+    full=true
+  fi
+done
+
+if [ "$full" = false ]; then
+  if [ -z "$ranges" ]; then
+    echo "[pre-push] 无待推送引用，跳过自检。"
+    exit 0
+  fi
+  echo "[pre-push] 仅文档改动，只检查空白问题（跳过全量自检，与 CI docs-only 分流一致）..."
+  status=0
+  OLDIFS=$IFS
+  IFS="
+"
+  for pair in $ranges; do
+    base=${pair% *}
+    head=${pair#* }
+    git diff --check "$base" "$head" || status=1
+  done
+  IFS=$OLDIFS
+  if [ "$status" -ne 0 ]; then
+    echo "[pre-push] 存在空白问题，已阻止本次推送。"
+    exit "$status"
+  fi
+  echo "[pre-push] 文档检查通过，继续推送。"
+  exit 0
+fi
 
 echo "[pre-push] 运行推送前自检..."
 if command -v uv >/dev/null 2>&1; then

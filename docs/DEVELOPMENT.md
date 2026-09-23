@@ -254,7 +254,7 @@ ASIN 数据库（Excel `amazon_asin_database.xlsx`），搜索到的 ASIN 与番
 
 - **格式化**：ruff（行宽 120，启用 isort/pyupgrade/flake8）
 - **类型检查**：mypy（全项目零 `disable_error_code`；`mdcx/controllers/main_window/init.py`、`load_config.py`、`views/`、`gen/` 等豁免，CI `ci.yaml` 强制执行）；pyright 仅在 `pyproject.toml` 中保留配置，未纳入 CI 门禁
-- **Git 钩子**：钩子脚本入库于 `.githooks/`（`pre-push` 推送前自动跑全量 `check`；`prepare-commit-msg` 按 git config 的 `coauthor.*` 追加署名），`uv run check`（不带 `--skip-hook-install`）会自动执行 `git config core.hooksPath .githooks` 完成启用；该配置属本地 git config，环境重置后需重新执行一次（`git config core.hooksPath` 查当前值）。项目不要求安装 pre-commit
+- **Git 钩子**：钩子脚本入库于 `.githooks/`（`pre-push` 按推送范围分流：全部为文档类改动（`.md`/`.mdx`/`.monkeycode/`/`docs/`/`wiki/`）时只跑 `git diff --check`，含代码改动才跑全量 `check`，分类口径与 CI「Classify changed files」一致、新分支无远端基线时保守全量；`prepare-commit-msg` 按 git config 的 `coauthor.*` 追加署名），`uv run check`（不带 `--skip-hook-install`）会自动执行 `git config core.hooksPath .githooks` 完成启用；该配置属本地 git config，环境重置后需重新执行一次（`git config core.hooksPath` 查当前值）。项目不要求安装 pre-commit
 - **检查和修复**：
   ```bash
   uv run ruff check .          # 代码检查
