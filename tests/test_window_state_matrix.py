@@ -1062,6 +1062,16 @@ def test_adaptive_window_sizes_matrix():
     # 超小屏下限钳制：不得低于 400x300
     assert _adaptive_window_sizes(500, 350) == (400, 300, 450, 322)
 
+    # frameless（隐藏边框）：默认 ×0.9，min 尺寸与原生默认不变（2026-09-23 突兀感反馈）
+    assert _adaptive_window_sizes(1920, 1040, frameless=True) == (850, 700, 1152, 860)
+    assert _adaptive_window_sizes(1536, 864, frameless=True) == (850, 648, 1152, 714)
+    # 1366x768：收回不越过初始设计 1030x700——高触底 700，宽仍 1106>1030
+    assert _adaptive_window_sizes(1366, 768, frameless=True) == (819, 576, 1106, 700)
+    # 原生默认已低于初始设计（小屏）：frameless 不再缩，与原生一致
+    assert _adaptive_window_sizes(1024, 600, frameless=True) == (614, 450, 921, 552)
+    # 收一档恰好撞上初始设计宽下限：1099→989 抬回 1030
+    assert _adaptive_window_sizes(1222, 1040, frameless=True)[2] == 1030
+
 
 def test_main_window_applies_adaptive_sizes(win, app):
     """集成：min 尺寸在构造时按屏应用（Init_Ui）；默认尺寸在首次 showEvent 应用。

@@ -561,7 +561,9 @@ class MyMAinWindow(QMainWindow):
         screen = self.screen()
         if screen is not None:
             avail = screen.availableGeometry()
-            _, _, def_w, def_h = _adaptive_window_sizes(avail.width(), avail.height())
+            # 隐藏边框（美观样式）无系统标题栏兜底、同尺寸视觉更铺屏，默认再收一档
+            frameless = manager.config.window_title == "hide"
+            _, _, def_w, def_h = _adaptive_window_sizes(avail.width(), avail.height(), frameless=frameless)
         else:
             def_w, def_h = 1030, 700
         self.resize(def_w, def_h)

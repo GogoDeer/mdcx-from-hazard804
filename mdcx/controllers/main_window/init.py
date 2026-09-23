@@ -122,7 +122,10 @@ def refresh_network_check_badges(self: "MyMAinWindow") -> None:
             combo.setItemData(i, _site_combo_item_tooltip(value, base), Qt.ItemDataRole.ToolTipRole)
 
 
-def _adaptive_window_sizes(avail_w: int, avail_h: int) -> tuple[int, int, int, int]:
+_INITIAL_DESIGN_W, _INITIAL_DESIGN_H = 1030, 700
+
+
+def _adaptive_window_sizes(avail_w: int, avail_h: int, frameless: bool = False) -> tuple[int, int, int, int]:
     """按屏幕可用区域计算窗口最小尺寸与默认尺寸，返回 (min_w, min_h, def_w, def_h)。
 
     - 最小高取 min(700, 可用高×0.75)：700 可完整容纳主页面内容与设置页底部浮框
@@ -136,6 +139,11 @@ def _adaptive_window_sizes(avail_w: int, avail_h: int) -> tuple[int, int, int, i
       封面/信息区随响应式布局同步放大；用户两轮反馈高度仍偏扁、比例不协调
       （2026-09-22），默认高提到 980、比例放宽到 ×0.92（1080p 无缩放下
       1280×956）；小屏/高缩放由 min() 自然收窄进屏内。
+    - frameless（隐藏边框/美观样式）默认尺寸单独 ×0.9（2026-09-23 用户反馈
+      突兀感——无系统标题栏兜底，同尺寸视觉更铺屏）：收回幅度以「初始
+      设计 1030×700」与 min 尺寸为下限（不低于其一，也不低于本维原生
+      默认值——原生已小于下限时不再缩），1080p 隐藏边框默认 1152×860。
+      仅影响首次启动默认值，最小尺寸与用户几何记忆不受影响。
       默认尺寸在 showEvent 首次显示时应用（基线既有钩子；Windows runner 的
       pytest 收尾崩溃为环境性 flake，与 resize 时机无关，勿再误归因）。
     """
@@ -143,6 +151,9 @@ def _adaptive_window_sizes(avail_w: int, avail_h: int) -> tuple[int, int, int, i
     min_h = min(700, max(int(avail_h * 0.75), 300))
     def_w = min(1280, max(int(avail_w * 0.9), min_w))
     def_h = min(980, max(int(avail_h * 0.92), min_h))
+    if frameless:
+        def_w = max(def_w * 9 // 10, min_w, min(def_w, _INITIAL_DESIGN_W))
+        def_h = max(def_h * 9 // 10, min_h, min(def_h, _INITIAL_DESIGN_H))
     return min_w, min_h, def_w, def_h
 
 
