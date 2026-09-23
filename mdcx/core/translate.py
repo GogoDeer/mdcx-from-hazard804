@@ -265,6 +265,9 @@ def map_actor_names(res: CrawlersResult, all_actors=False):
             continue
         actor_data = resources.get_actor_data(name)
         mapped_name = actor_data.get(lang.value) if isinstance(lang, Language) else actor_data.get(lang)
+        if not mapped_name:
+            # 映射表缺该语言字段时回落原名，避免 None 混入演员列表污染 NFO（2026-09-23 全面审查）
+            mapped_name = name
         if mapped_name not in mapped:
             mapped.append(mapped_name)
 

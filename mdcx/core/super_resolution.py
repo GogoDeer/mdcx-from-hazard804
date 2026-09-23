@@ -244,8 +244,20 @@ def _sr_report_skip(tool: str, reasons: list[str]) -> None:
     signal.show_log_text(f"ℹ️ 可手动下载后解压到: {binary_path(tool)}")
 
 
+_ENSURE_LOCKS: dict[str, asyncio.Lock] = {}
+
+
 async def ensure_binary(tool: str) -> Path | None:
-    """返回可执行文件路径；平台不支持/内置缺失且下载失败返回 None（调用方降级）。"""
+    """返回可执行文件路径；平台不支持/内置缺失且下载失败返回 None（调用方降级）。
+
+    加 per-tool 锁：并发刮削多张海报时避免多协程同时下载/解压同一 zip 互相覆盖（2026-09-23 全面审查）。
+    """
+    lock = _ENSURE_LOCKS.setdefault(tool, asyncio.Lock())
+    async with lock:
+        return await _ensure_binary_inner(tool)
+
+
+async def _ensure_binary_inner(tool: str) -> Path | None:
     path = binary_path(tool)
     if is_binary_ready(tool):
         return path

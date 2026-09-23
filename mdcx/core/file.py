@@ -125,8 +125,13 @@ async def creat_folder(
         return True
 
     f_stat = await aiofiles.os.stat(file_path)
-    # 二者指向同一个文件
-    if os.path.samestat(fn_stat, f_stat):
+    # 二者指向同一个文件（samestat 只比对 dev/ino，叠加大小与 mtime 护栏，
+    # 防文件系统复用 inode+元数据碰撞导致误判成功，2026-09-23 全面审查）
+    if (
+        os.path.samestat(fn_stat, f_stat)
+        and fn_stat.st_size == f_stat.st_size
+        and fn_stat.st_mtime_ns == f_stat.st_mtime_ns
+    ):
         other.dont_move_movie = True
         if await aiofiles.os.path.exists(thumb_new_path_with_filename):
             other.thumb_path = thumb_new_path_with_filename

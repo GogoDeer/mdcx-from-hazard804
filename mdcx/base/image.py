@@ -233,7 +233,8 @@ async def add_mark_thread(pic_path: Path, mark_list: list[str]):
     temp_pic_path = pic_path.with_suffix(".[MARK].jpg")
     try:
         converted.load()
-        converted.save(temp_pic_path, quality=95, subsampling=0)
+        # JPEG 编码 + 落盘是整函数最重的同步开销，offload 避免阻塞事件循环（2026-09-23 全面审查）
+        await asyncio.to_thread(converted.save, temp_pic_path, quality=95, subsampling=0)
     except Exception:
         signal.show_log_text(traceback.format_exc())
     img_pic.close()
