@@ -1,0 +1,75 @@
+{
+  "site": "avmoo",
+  "number": "SSNI-804",
+  "recorded_at": "2026-09-23T00:00:00+00:00",
+  "interactions": [
+    {
+      "method": "POST",
+      "url": "https://avmoo.shop/jav/data/api/search",
+      "body": {
+        "code": 200,
+        "data": [
+          {
+            "movieId": "kgjavpj",
+            "movieFanHao": "SSNI-804",
+            "title": "Title"
+          }
+        ]
+      },
+      "status": 200,
+      "error": "",
+      "content_type": "application/json"
+    },
+    {
+      "method": "POST",
+      "url": "https://avmoo.shop/jav/data/api/getMovie",
+      "body": {
+        "code": 200,
+        "data": {
+          "movieId": "kgjavpj",
+          "movieFanHao": "SSNI-804",
+          "title": "巨乳上司と童貞部下",
+          "title_ja": "巨乳上司と童貞部下",
+          "releaseDate": "2020-06-14",
+          "length": 119,
+          "posterLarge": "https://img/pl.jpg",
+          "posterSmall": "https://img/ps.jpg",
+          "sampleLarge": [
+            "https://img/s1.jpg",
+            "https://img/s2.jpg"
+          ],
+          "studio": {
+            "studioName": "S1 NO.1 Style"
+          },
+          "series": {
+            "seriesName": "Series"
+          },
+          "label": {
+            "labelName": "S1 NO.1 STYLE"
+          },
+          "director": {
+            "directorName": "苺原"
+          },
+          "star": [
+            {
+              "starName_en": "Aika Yumeno",
+              "starName_ja": "夢乃あいか"
+            }
+          ],
+          "genre": [
+            {
+              "genreName": "ドラマ"
+            },
+            {
+              "genreName": "ギリモザ"
+            }
+          ],
+          "description_cn": "简介"
+        }
+      },
+      "status": 200,
+      "error": "",
+      "content_type": "application/json"
+    }
+  ]
+}

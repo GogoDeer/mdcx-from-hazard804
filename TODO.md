@@ -201,11 +201,11 @@
 - 与我们既有纪律同源（"404 不计错误率""真实限流信号只有 403/429/连接异常"），是其图片下载侧落地
 - 挂载点：`base/web.py` 图源候选链 + 图片下载失败处理路径
 
-### 22. 爬虫测试 recording 回放框架 ⬜
+### 22. 爬虫测试 recording 回放框架 ✅（2026-09-23 实现：tests/crawlers/recording.py 三件套 + 三条整链离线样例；余站样本增量回填）
 - **价值：中**　**难度：中**（3-5 天）
 - 参考 mdcz `tests/recording/`（record→replay）：真实站点响应录制一次存 fixture，CI/日常测试离线回放
 - 解决我们反复踩的"手写 HTML 夹具与真实页面漂移"（#174 生产形态 spec、#176 真实快照两次实证同族问题）；站点改版后重录即可回归
-- 起步：先给 top 5 流量站（javbus/javdb/dmm/avmoo/missav）各录 1 个番号样本
+- 实装（2026-09-23）：`tests/crawlers/recording.py` = Interaction/Cassette JSON 夹具（data/recordings/&lt;site&gt;/&lt;number&gt;.json）+ ReplayClient（签名兼容 AsyncWebClient 文本/JSON 子集，注入爬虫 client= 即换轨；精确 URL 优先、镜像站点按 path+query 忽略 host 匹配；未命中硬报错 fail-closed）+ RecordingClient（真站重录：包裹真实 AsyncWebClient 跑爬虫 → to_cassette → save_cassette 覆盖归档）。整链样例 3 条：xcity ABF-050（404→HTML 回退）、avmoo SSNI-804（JSON 双 POST）、javdb_api IPX-535（镜像轮换错位仍命中）；其余 top 站样本待有真实快照/网络时增量回填
 - 成本红利（2026-09-23 全库审查副产品）：base_url/镜像轮询/域名轮转器已按任务级 ContextVar 隔离（crawlers/base/base.py `_base_url_ctx`/`_rotator_holder`），回放录制 fixture 无跨任务状态污染，注入面已收窄
 
 ### 23. 媒体根路径规范化（rootId + relativePath）⬜
