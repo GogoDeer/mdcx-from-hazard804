@@ -6,7 +6,7 @@ import os
 import re
 import time
 import unicodedata
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -410,11 +410,11 @@ async def get_gfriends_index() -> dict[str, str] | None:
     gfriends_json_path = resources.u("gfriends.json")
 
     def _expand(data: dict) -> dict[str, str]:
-        """将 Filetree.json 原始格式展开为 {filename: url}；已展开则原样返回。"""
+        """将 Filetree.json 原始格式展开为 {filename: url}（GFriendsIndex，带惰建归一化查找表）；已展开则包装返回。"""
         content = data.get("Content") if isinstance(data, dict) else None
         if not content:
-            return data if isinstance(data, dict) else {}
-        result: dict[str, str] = {}
+            return GFriendsIndex(data) if isinstance(data, dict) else GFriendsIndex()
+        result = GFriendsIndex()
         for category, items in content.items():
             for filename, filepath in items.items():
                 if filename not in result:
@@ -705,19 +705,91 @@ def _safe_filename(name: str, suffix: str) -> str:
     return (cleaned or "unknown") + suffix
 
 
-def gfriends_find_actor(gfriends_index: dict[str, str], name: str) -> str | None:
-    normalized_name = _normalize_actor_name(name)
-    if not normalized_name:
+def gfriends_find_actor(gfriends_index: dict[str, str], names: str | Iterable[str] | None) -> str | None:
+    """按候选名依次查找 GFriends 头像 url，首个命中即返回；接受单名或候选名列表。
+
+    候选列表由 _gfriends_candidate_names 组装（原名优先 + 演员库别名，#15）；
+    归一化 stem 建表时先到先得，与逐键扫描语义一致。
+    """
+    if isinstance(names, str):
+        candidates: list[str] = [names]
+    elif names is None:
+        candidates = []
+    else:
+        candidates = [name for name in names if name]
+    if not candidates:
         return None
-    for key, url in gfriends_index.items():
-        stem = key.rsplit(".", 1)[0] if "." in key else key
-        if _normalize_actor_name(stem) == normalized_name:
+    if isinstance(gfriends_index, GFriendsIndex):
+        urls = gfriends_index.normalized_urls()
+    else:
+        urls = _normalized_gfriends_urls(gfriends_index)
+    seen: set[str] = set()
+    for candidate in candidates:
+        normalized = _normalize_actor_name(candidate)
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        url = urls.get(normalized)
+        if url:
             return url
     return None
 
 
+class GFriendsIndex(dict):
+    """Gfriends {filename: url} 索引 + 惰建归一化查找表。
+
+    键侧归一只在首查构建一次并缓存复用，多演员重复查找降为 O(1)
+    （原实现每次查询全表逐键归一，几万条文件名 × 每演员一次是已知慢点）。
+    """
+
+    _normalized_cache: dict[str, str] | None = None
+
+    def normalized_urls(self) -> dict[str, str]:
+        if self._normalized_cache is None:
+            self._normalized_cache = _normalized_gfriends_urls(self)
+        return self._normalized_cache
+
+
+def _normalized_gfriends_urls(gfriends_index: dict[str, str]) -> dict[str, str]:
+    """构建 {归一化 stem: url} 查找表。"""
+    urls: dict[str, str] = {}
+    for key, url in gfriends_index.items():
+        stem = key.rsplit(".", 1)[0] if "." in key else key
+        normalized = _normalize_actor_name(stem)
+        if normalized:
+            urls.setdefault(normalized, url)
+    return urls
+
+
+def _gfriends_candidate_names(name: str) -> list[str]:
+    """演员名 → GFriends 候选名列表：原名优先，补演员数据库整行（繁/日/简/keyword 别名），保序去重。
+
+    数据库未命中时各列默认回填原名，去重后退化为 [原名]，与旧单名行为等价；
+    数据库异常静默回落，不打断头像查找。
+    """
+    candidates: list[str] = [name]
+    try:
+        data = resources.get_actor_data(name)
+    except Exception:
+        data = {}
+    for key in ("zh_tw", "jp", "zh_cn"):
+        value = str(data.get(key) or "").strip()
+        if value:
+            candidates.append(value)
+    keywords = data.get("keyword")
+    if isinstance(keywords, list):
+        candidates.extend(kw.strip() for kw in keywords if isinstance(kw, str) and kw.strip())
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        if candidate and candidate not in seen:
+            seen.add(candidate)
+            deduped.append(candidate)
+    return deduped
+
+
 async def from_gfriends(actor: ActorInfo, gfriends_index: dict[str, str], cache_dir: Path) -> str | None:
-    url = gfriends_find_actor(gfriends_index, actor.name)
+    url = gfriends_find_actor(gfriends_index, _gfriends_candidate_names(actor.name))
     if not url:
         return None
     local_path = cache_dir / _safe_filename(actor.name, "_gf.jpg")

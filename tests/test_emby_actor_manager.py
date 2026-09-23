@@ -109,6 +109,114 @@ def test_gfriends_find_actor_returns_none_for_empty_name():
     assert gfriends_find_actor({"A.jpg": "https://x.com/a.jpg"}, None) is None
 
 
+def test_gfriends_find_actor_candidate_list_first_hit_in_order():
+    """#15：候选名列表按序依次尝试，首个命中即返回。"""
+    index = {"三上悠亞.jpg": "https://gf.com/1.jpg", "YuiHatano.jpg": "https://gf.com/2.jpg"}
+    assert gfriends_find_actor(index, ["三上悠亞", "yuihatano"]) == "https://gf.com/1.jpg"
+    assert gfriends_find_actor(index, ["不存在", "yui hatano"]) == "https://gf.com/2.jpg"
+
+
+def test_gfriends_find_actor_candidate_list_no_hit_and_degenerate_inputs():
+    index = {"三上悠亞.jpg": "https://gf.com/1.jpg"}
+    assert gfriends_find_actor(index, ["A", "B"]) is None
+    assert gfriends_find_actor(index, []) is None
+    assert gfriends_find_actor(index, [None, ""]) is None
+    assert gfriends_find_actor({}, ["三上悠亞"]) is None
+    # 列表含空项不报错，跳过后续命中
+    assert gfriends_find_actor(index, ["", None, "三上悠亞"]) == "https://gf.com/1.jpg"
+
+
+def test_gfriends_find_actor_stem_duplicates_first_wins():
+    """同归一化 stem 重复入表时保留首个（与原逐键扫描序语义一致）。"""
+    index = {"A.jpg": "https://gf.com/first", "a.png": "https://gf.com/second"}
+    assert gfriends_find_actor(index, ["a"]) == "https://gf.com/first"
+
+
+def test_gfriends_index_normalizes_each_key_once(monkeypatch: pytest.MonkeyPatch):
+    """GFriendsIndex 归一只在首查构建一次并复用，后续查找 O(1) 不再逐键归一。"""
+    from mdcx.tools import emby_actor_manager as m
+
+    calls = []
+    orig_normalize = m._normalize_actor_name
+
+    def counting_normalize(name: str) -> str:
+        calls.append(name)
+        return orig_normalize(str(name))
+
+    monkeypatch.setattr(m, "_normalize_actor_name", counting_normalize)
+    idx = m.GFriendsIndex({"三上悠亞.jpg": "https://gf.com/1.jpg", "桥本有菜.png": "https://gf.com/2.png"})
+    assert len(calls) == 0  # 构建索引时零归一，懒加载
+    assert m.gfriends_find_actor(idx, "三上悠亞") == "https://gf.com/1.jpg"
+    assert len(calls) == 3  # 首查：2 个键 + 1 个查询名
+    assert m.gfriends_find_actor(idx, ["桥本有菜", "不存在"]) == "https://gf.com/2.png"
+    assert len(calls) == 4  # 二查首个候选命中即早退（仅 +1 查询名归一），键侧零重归一
+
+
+def test_gfriends_index_behaves_as_plain_dict():
+    from mdcx.tools.emby_actor_manager import GFriendsIndex
+
+    idx = GFriendsIndex({"A.jpg": "u1"})
+    assert dict(idx) == {"A.jpg": "u1"}
+    assert bool(GFriendsIndex()) is False
+    assert list(idx.items()) == [("A.jpg", "u1")]
+
+
+def test_gfriends_candidate_names_merges_actor_db_row(monkeypatch: pytest.MonkeyPatch):
+    """候选列表 = 原名 + 演员库反查行（繁/日/简/keyword 别名），顺序去重。"""
+    from mdcx.tools import emby_actor_manager as m
+
+    def fake_get_actor_data(name: str) -> dict:
+        return {
+            "zh_cn": "河北彩伽",
+            "zh_tw": "河北彩伽",
+            "jp": "河北彩花",
+            "keyword": ["彩伽", "Saika Kawakita", "  "],
+            "has_name": True,
+        }
+
+    monkeypatch.setattr(m.resources, "get_actor_data", fake_get_actor_data)
+    assert m._gfriends_candidate_names("河北彩花") == ["河北彩花", "河北彩伽", "彩伽", "Saika Kawakita"]
+
+
+def test_gfriends_candidate_names_miss_and_error_fall_back_to_single(monkeypatch: pytest.MonkeyPatch):
+    """反查未命中（各列=原名）或异常时，候选退化为 [原名]，等价旧单名行为。"""
+    from mdcx.tools import emby_actor_manager as m
+
+    def miss(name: str) -> dict:
+        return {"zh_cn": name, "zh_tw": name, "jp": name, "keyword": [], "has_name": False}
+
+    monkeypatch.setattr(m.resources, "get_actor_data", miss)
+    assert m._gfriends_candidate_names("路人甲") == ["路人甲"]
+
+    def boom(name: str) -> dict:
+        raise RuntimeError("db broken")
+
+    monkeypatch.setattr(m.resources, "get_actor_data", boom)
+    assert m._gfriends_candidate_names("路人乙") == ["路人乙"]
+
+
+@pytest.mark.asyncio
+async def test_from_gfriends_tries_alias_candidates(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """from_gfriends 用候选列表匹配：原名未命中时别名命中即下载。"""
+    from mdcx.tools import emby_actor_manager as m
+
+    index = {"三上悠亞.jpg": "https://gf.com/mikami.jpg"}
+    actor = ActorInfo(name="三上悠亜", actor_id="a1", server_id="s1")  # 简体「亜」原样查不中
+
+    async def fake_download(url: str, path: Path, cache_dir: Path) -> bool:
+        if url != "https://gf.com/mikami.jpg":
+            return False
+        Path(path).touch()
+        return True
+
+    monkeypatch.setattr(m, "_gfriends_candidate_names", lambda name: [name, "三上悠亞"])
+    monkeypatch.setattr(m, "download_file_with_filepath", fake_download)
+    result = await m.from_gfriends(actor, index, tmp_path)
+    assert result is not None
+    assert result.endswith("_gf.jpg")
+    assert (tmp_path / Path(result).name).exists()
+
+
 def test_from_local_avatar_returns_path_when_file_matches(tmp_path: Path):
     avatar_dir = tmp_path / "avatars"
     avatar_dir.mkdir(parents=True)
