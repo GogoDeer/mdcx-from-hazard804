@@ -3,7 +3,14 @@
 约定：改这些生产代码形态前先回看本文件 docstring 里记录的原始缺陷。
 """
 
+import asyncio
+import os
 from pathlib import Path
+
+
+def asyncio_run_compat(coro):
+    return asyncio.run(coro)
+
 
 SCRAPER = Path("mdcx/core/scraper.py")
 
@@ -241,3 +248,112 @@ def test_actor_mapping_falls_back_to_original_name():
         translate_mod.resources = orig_resources
     assert fake_res.actors == ["Yui Hatano"], f"演员映射回落异常: {fake_res.actors}"
     assert fake_res.all_actors == []
+
+
+def _blank_result():
+    from mdcx.models.model_types import BaseCrawlerResult
+
+    inst = BaseCrawlerResult.__new__(BaseCrawlerResult)
+    inst.title = ""
+    return inst
+
+
+def _stat_result(ino: int, dev: int, nbytes: int, mtime_ns: int):
+    sec = mtime_ns // 10**9
+    return os.stat_result((0o644, ino, dev, 1, 0, 0, nbytes, float(sec), float(sec), float(sec), mtime_ns))
+
+
+def test_creat_folder_samestat_guard_rejects_metadata_collision(tmp_path, monkeypatch):
+    """samestat 相同但大小/修改时间不一致时不得判定为同一文件（审查项 #16 护栏）。"""
+    import aiofiles.os as aos
+
+    from mdcx.config.manager import manager
+    from mdcx.core import file as file_mod
+    from mdcx.models.model_types import BaseCrawlerResult, OtherInfo
+
+    monkeypatch.setattr(manager.config, "main_mode", 4, raising=False)
+    monkeypatch.setattr(manager.config, "update_mode", "b", raising=False)
+
+    fn_stat = _stat_result(ino=5, dev=7, nbytes=100, mtime_ns=1_000)
+    f_stat = _stat_result(ino=5, dev=7, nbytes=200, mtime_ns=1_000)
+    stats = {"/x/a.mp4": f_stat, "/s/a.mp4": fn_stat}
+
+    async def fake_stat(path):
+        return stats[str(path)]
+
+    async def fake_exists(_p):
+        return True
+
+    async def fake_isdir(_p):
+        return True
+
+    monkeypatch.setattr(aos, "stat", fake_stat)
+    monkeypatch.setattr(aos.path, "exists", fake_exists)
+    monkeypatch.setattr(aos.path, "isdir", fake_isdir)
+
+    from pathlib import Path
+
+    other = OtherInfo.empty()
+    json_data = BaseCrawlerResult.__new__(BaseCrawlerResult)
+    json_data.title = ""
+    ok = asyncio_run_compat(
+        file_mod.creat_folder(
+            other,
+            json_data,
+            Path("/s"),
+            Path("/x/a.mp4"),
+            Path("/s/a.mp4"),
+            Path("/s/a-thumb.jpg"),
+            Path("/s/a-poster.jpg"),
+        )
+    )
+    assert ok is False, "dev/ino 相同但大小不同仍被判同一文件——护栏失效"
+    assert other.dont_move_movie is False
+    assert "同名文件" in (json_data.title or "")
+
+
+def test_creat_folder_samestat_accepts_identical_metadata(tmp_path, monkeypatch):
+    """dev/ino/大小/mtime 全一致时维持原语义：判定同一文件、标记不移动并继承图路径。"""
+    import aiofiles.os as aos
+
+    from mdcx.config.manager import manager
+    from mdcx.core import file as file_mod
+    from mdcx.models.model_types import OtherInfo
+
+    monkeypatch.setattr(manager.config, "main_mode", 4, raising=False)
+    monkeypatch.setattr(manager.config, "update_mode", "b", raising=False)
+
+    same = _stat_result(ino=5, dev=7, nbytes=100, mtime_ns=1_000)
+    stats = {"/x/a.mp4": same, "/s/a.mp4": same}
+
+    async def fake_stat(path):
+        return stats[str(path)]
+
+    async def fake_exists(_p):
+        return True
+
+    async def fake_isdir(_p):
+        return True
+
+    monkeypatch.setattr(aos, "stat", fake_stat)
+    monkeypatch.setattr(aos.path, "exists", fake_exists)
+    monkeypatch.setattr(aos.path, "isdir", fake_isdir)
+
+    from pathlib import Path
+
+    other = OtherInfo.empty()
+    ok = asyncio_run_compat(
+        file_mod.creat_folder(
+            other,
+            _blank_result(),
+            Path("/s"),
+            Path("/x/a.mp4"),
+            Path("/s/a.mp4"),
+            Path("/s/a-thumb.jpg"),
+            Path("/s/a-poster.jpg"),
+        )
+    )
+    assert ok is True
+    assert other.dont_move_movie is True
+    assert other.thumb_path == Path("/s/a-thumb.jpg")
+    assert other.poster_path == Path("/s/a-poster.jpg")
