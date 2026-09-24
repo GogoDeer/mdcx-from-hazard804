@@ -170,6 +170,17 @@
   - Windows 默认控制台代码页为 GBK（CP936），直接打印 Unicode 特殊符号会导致 `UnicodeEncodeError`。已全量确立在所有独立脚本与测试入口显式配置 `sys.stdout.reconfigure(encoding='utf-8')`。
   - 确立所有修改 `*.ui` 的改动必须立即执行 `uv run pyuic6` 和 `uv run ruff format`，确保 `test_ui_structure.py` 自动化测试 100% 同步通过。
 
+### 4.5 读取模式（`main_mode=4`）未勾选「重新整理分类」时误移文件与丢失数据修复
+- **涉及模块**：`mdcx/core/scraper.py`, `tests/test_read_mode_no_move.py`
+- **现象**：在读取模式（`main_mode == 4`）下扫描已整理好的媒体库目录（如 `JAV_output`），当用户未勾选「本地已刮削成功的文件，重新整理分类（`ReadMode.HAS_NFO_UPDATE`）」，仅勾选「允许更新 nfo 文件（`ReadMode.READ_UPDATE_NFO`）」或「重新下载图片（`ReadMode.READ_DOWNLOAD_AGAIN`）」时，若全局 `success_file_move=True`（默认开启），刮削器会将原目录的影片、NFO、海报及附属文件强行搬移并平铺到 `success_folder`（如 `Media\Input`），且清理掉原分类目录，造成严重的数据结构破坏与同名 `poster.jpg` 互相覆盖。
+- **根因分析**：
+  1. `scraper.py` 在 `skip_reorganize = manager.config.main_mode == 4 and is_nfo_existed and ReadMode.HAS_NFO_UPDATE not in read_mode` 分支中，错误地将 `folder_new_path` 指向了 `success_folder`（而非原目录 `folder_old_path`），并调用 `_generate_file_name` 重新计算了文件名。
+  2. 下游的 `move_movie` 及附属文件移动逻辑仅判断了 `if manager.config.success_file_move:`，未检查 `not skip_reorganize`，且在未开启重下图片（`not file_can_download`）时仍无条件执行了 `deal_old_files`。
+- **修复措施**：
+  1. 当 `skip_reorganize` 为 `True` 时，将 `folder_new_path`、`file_new_path`、`naming_rule`、`nfo_new_path` 及图片路径严格锁定在原目录 `folder_old_path` 与原文件名 `file_name`。
+  2. 在 `move_movie` 与字幕/种子/BIF/其他文件移动处增加 `and not skip_reorganize` 守卫；在 `skip_reorganize and not file_can_download` 时跳过 `deal_old_files` 并直接复用 `get_nfo_data` 探测到的本地图片路径。
+  3. 新增独立回归测试集 `tests/test_read_mode_no_move.py` 锁定原地更新 NFO 与原地重下图片两类场景。
+
 ---
 
 ## 5. 受影响文件对照与代码映射表

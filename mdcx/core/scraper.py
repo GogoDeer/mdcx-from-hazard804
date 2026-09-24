@@ -53,7 +53,6 @@ from ..utils.file import copy_file_async, move_file_async
 from ..utils.image import compress_images_in_folder_async
 from ..utils.path import is_any_descendant
 from .file import (
-    _generate_file_name,
     _get_folder_path,
     creat_folder,
     deal_old_files,
@@ -890,6 +889,7 @@ class Scraper:
             return None, None
 
         is_nfo_existed = False
+        info: OtherInfo | None = None
         res = CrawlersResult.empty()  # todo 保证所有路径上均有 res 值
         file_classification = None
         # 读取模式
@@ -1193,23 +1193,22 @@ class Scraper:
         # 显示json_data内容
         show_movie_info(file_info, res)
 
-        # 读模式不勾"重新整理分类"时跳过路径计算
+        # 读模式不勾"重新整理分类"时跳过路径计算，严格保持原目录与原文件名
         skip_reorganize = manager.config.main_mode == 4 and is_nfo_existed and ReadMode.HAS_NFO_UPDATE not in read_mode
 
         if skip_reorganize:
-            naming_rule = _generate_file_name(file_info.cd_part, file_info, res)
-            file_new_name = naming_rule + file_ex.lower()
-            file_new_path = success_folder / file_new_name
-            folder_new_path = success_folder
-            nfo_new_path = success_folder / (naming_rule + ".nfo")
-            poster_new_path_with_filename = success_folder / (naming_rule + "-poster.jpg")
-            thumb_new_path_with_filename = success_folder / (naming_rule + "-thumb.jpg")
-            fanart_new_path_with_filename = success_folder / (naming_rule + "-fanart.jpg")
-            _, folder_name = _get_folder_path(success_folder, file_info, res)
+            naming_rule = file_name
+            file_new_path = file_path
+            folder_new_path = folder_old_path
+            nfo_new_path = file_path.with_suffix(".nfo")
+            poster_new_path_with_filename = folder_old_path / (file_name + "-poster.jpg")
+            thumb_new_path_with_filename = folder_old_path / (file_name + "-thumb.jpg")
+            fanart_new_path_with_filename = folder_old_path / (file_name + "-fanart.jpg")
+            _, folder_name = _get_folder_path(folder_old_path, file_info, res)
             if manager.config.pic_simple_name and folder_name:
-                poster_final_path = success_folder / "poster.jpg"
-                thumb_final_path = success_folder / "thumb.jpg"
-                fanart_final_path = success_folder / "fanart.jpg"
+                poster_final_path = folder_old_path / "poster.jpg"
+                thumb_final_path = folder_old_path / "thumb.jpg"
+                fanart_final_path = folder_old_path / "fanart.jpg"
             else:
                 poster_final_path = poster_new_path_with_filename
                 thumb_final_path = thumb_new_path_with_filename
@@ -1337,21 +1336,22 @@ class Scraper:
         # 清理旧的thumb、poster、fanart、extrafanart、nfo
         pic_final_catched = False
         single_folder_catched = False
-        pic_final_catched, single_folder_catched = await deal_old_files(
-            res.number,
-            other,
-            folder_old_path,
-            folder_new_path,
-            file_path,
-            thumb_new_path_with_filename,
-            poster_new_path_with_filename,
-            fanart_new_path_with_filename,
-            nfo_new_path,
-            poster_final_path,
-            thumb_final_path,
-            fanart_final_path,
-            naming_rule,
-        )
+        if not skip_reorganize or file_can_download:
+            pic_final_catched, single_folder_catched = await deal_old_files(
+                res.number,
+                other,
+                folder_old_path,
+                folder_new_path,
+                file_path,
+                thumb_new_path_with_filename,
+                poster_new_path_with_filename,
+                fanart_new_path_with_filename,
+                nfo_new_path,
+                poster_final_path,
+                thumb_final_path,
+                fanart_final_path,
+                naming_rule,
+            )
 
         # 如果 final_pic_path 没处理过，这时才需要下载和加水印
         if pic_final_catched and file_can_download:
@@ -1378,7 +1378,7 @@ class Scraper:
         # 先移动视频本体：失败即判刮削失败退出——此时还没有任何伴生产物落新位置，
         # 不会出现"新名 NFO/字幕孤悬 + 旧 NFO 被搬走 + 源影片裸奔"的割裂状态。
         # （move_movie 内部的旧 NFO 迁移对后继 write_nfo 合并语义等价，顺序安全。）
-        if manager.config.success_file_move:
+        if manager.config.success_file_move and not skip_reorganize:
             if not await move_movie(other, file_info, file_path, file_new_path):
                 return None, None
 
@@ -1389,7 +1389,7 @@ class Scraper:
         manifest.created_files.append(nfo_new_path)
 
         # 移动字幕、种子、bif、trailer、其他文件（配置允许时才执行）
-        if manager.config.success_file_move:
+        if manager.config.success_file_move and not skip_reorganize:
             if file_info.has_sub:
                 await move_sub(folder_old_path, folder_new_path, file_name, sub_list, naming_rule)
                 for sub in sub_list:
@@ -1409,7 +1409,7 @@ class Scraper:
 
         # 创建软链接及复制文件（由 auto_link 独立控制）
         if manager.config.auto_link:
-            if manager.config.success_file_move:
+            if manager.config.success_file_move and not skip_reorganize:
                 target_dir = Path(manager.config.localdisk_path) / folder_new_path.relative_to(
                     success_folder, walk_up=True
                 )
@@ -1419,7 +1419,11 @@ class Scraper:
             await newtdisk_creat_symlink(copy, folder_new_path, target_dir)
 
         # json添加封面缩略图路径（仅在路径重算后有值）
-        if poster_final_path is not None:
+        if skip_reorganize and not file_can_download and info is not None:
+            other.poster_path = info.poster_path
+            other.thumb_path = info.thumb_path
+            other.fanart_path = info.fanart_path
+        elif poster_final_path is not None:
             other.poster_path = poster_final_path
             other.thumb_path = thumb_final_path
             other.fanart_path = fanart_final_path
