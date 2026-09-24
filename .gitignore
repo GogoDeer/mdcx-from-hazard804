@@ -195,6 +195,7 @@ scripts/local/
 AGENTS.md
 uv.toml
 .planning/scratch/
+reports/
 
 # 测试文件（非必需，本地开发用）
 test_*.xlsx
