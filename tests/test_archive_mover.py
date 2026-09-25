@@ -566,3 +566,39 @@ def test_homonym_isolation_and_ignored_dup_groups():
         worker.signals.finished.connect(lambda dups, _res: results.extend(dups))
         worker.run()
         assert len(results) == 0
+
+
+def test_copy_dup_false_positive_info_to_clipboard(monkeypatch):
+    from PyQt6.QtWidgets import QApplication
+
+    from tools.archive_mover.gui import ArchiveMoverWindow
+
+    _app = QApplication.instance() or QApplication(["-platform", "offscreen"])
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        cfg_file = Path(tmp_dir) / "config.json"
+        monkeypatch.setattr("tools.archive_mover.gui._get_config_path", lambda: cfg_file)
+        monkeypatch.setattr("tools.archive_mover.gui.test_stash_connection", lambda u, k: (True, "OK"))
+
+        actor1 = Path(tmp_dir) / "素人" / "北見唯奈"
+        (actor1 / "C0930-hitozuma0855").mkdir(parents=True)
+        actor2 = Path(tmp_dir) / "孕" / "かわいまゆ"
+        (actor2 / "GACHI-963").mkdir(parents=True)
+
+        win = ArchiveMoverWindow()
+        group_data = {
+            "canonical_name": "かわいまゆ",
+            "diag": "⚠️ 别名跨分类重复 (かわいまゆ <=> 北見唯奈)",
+            "entries": [
+                {"raw_name": "北見唯奈", "category": "素人", "path": str(actor1)},
+                {"raw_name": "かわいまゆ", "category": "孕", "path": str(actor2)},
+            ],
+        }
+
+        copied_text = win._copy_dup_false_positive_info(group_data)
+        assert "疑似误报" in copied_text
+        assert "かわいまゆ" in copied_text
+        assert "北見唯奈" in copied_text
+        assert str(actor1 / "C0930-hitozuma0855") in copied_text
+        assert str(actor2 / "GACHI-963") in copied_text
+        assert QApplication.clipboard().text() == copied_text

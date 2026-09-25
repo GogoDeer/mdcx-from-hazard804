@@ -1736,6 +1736,7 @@ class ArchiveMoverWindow(QMainWindow):
 
         unique_names = list(dict.fromkeys(e.get("raw_name", "") for e in all_entries if e.get("raw_name")))
         names_desc = " ≠ ".join(unique_names[:3]) if len(unique_names) > 1 else canonical_name
+        act_copy_fp = menu.addAction(f"📋 复制误报信息到剪贴板 ({names_desc})")
         act_ignore = menu.addAction(f"🚫 确认非同一演员：加入屏蔽列表 ({names_desc})")
 
         action = menu.exec(self.dup_table.viewport().mapToGlobal(pos))
@@ -1749,8 +1750,57 @@ class ArchiveMoverWindow(QMainWindow):
                     os.startfile(str(p))
         elif act_merge and action == act_merge:
             self._merge_duplicate_actor_dirs(group_data, curr_entry, other_entries)
+        elif action == act_copy_fp:
+            self._copy_dup_false_positive_info(group_data)
         elif action == act_ignore:
             self._ignore_duplicate_actor_group(group_data)
+
+    def _copy_dup_false_positive_info(self, group_data: dict) -> str:
+        """生成选中重复演员组的误报诊断描述文本（含目录路径与示例番号子目录）并复制到剪贴板。"""
+        from .scanner import AUXILIARY_DIRS, IGNORED_NAMES
+
+        canonical_name = group_data.get("canonical_name", "该演员")
+        diag = group_data.get("diag", "")
+        entries = group_data.get("entries", [])
+
+        lines = [
+            "下面这组目录被扫描为同一演员（疑似误报），请排查原因：",
+            f"- 统一演员名：{canonical_name}",
+        ]
+        if diag:
+            lines.append(f"- 诊断特征：{diag}")
+        lines.append("- 涉及目录：")
+
+        for idx, entry in enumerate(entries, start=1):
+            raw_name = entry.get("raw_name", "")
+            category = entry.get("category", "")
+            path_str = entry.get("path", "")
+            lines.append(f"  {idx}. [{category} / {raw_name}] {path_str}")
+
+            p = Path(path_str) if path_str else None
+            if p and p.exists() and p.is_dir():
+                try:
+                    sample_children = []
+                    for child in sorted(p.iterdir(), key=lambda c: c.name):
+                        if not child.is_dir():
+                            continue
+                        low_name = child.name.lower()
+                        if low_name in IGNORED_NAMES or low_name in AUXILIARY_DIRS:
+                            continue
+                        sample_children.append(str(child))
+                        if len(sample_children) >= 2:
+                            break
+                    for sample_path in sample_children:
+                        lines.append(f"     示例番号路径：{sample_path}")
+                except OSError:
+                    pass
+
+        text = "\n".join(lines)
+        clipboard = QApplication.clipboard()
+        if clipboard is not None:
+            clipboard.setText(text)
+        self._set_status(f"📋 已复制「{canonical_name}」的误报描述与路径到剪贴板，可直接粘贴给 AI 分析", ok=True)
+        return text
 
     def _ignore_duplicate_actor_group(self, group_data: dict):
         """将当前选中的重复演员组加入屏蔽列表（确认不是同一人），后续不再扫描提示。"""
