@@ -1736,7 +1736,7 @@ class ArchiveMoverWindow(QMainWindow):
 
         unique_names = list(dict.fromkeys(e.get("raw_name", "") for e in all_entries if e.get("raw_name")))
         names_desc = " ≠ ".join(unique_names[:3]) if len(unique_names) > 1 else canonical_name
-        act_copy_fp = menu.addAction(f"📋 复制误报信息到剪贴板 ({names_desc})")
+        act_copy_fp = menu.addAction(f"📋 复制误报信息 ({names_desc})")
         act_ignore = menu.addAction(f"🚫 确认非同一演员：加入屏蔽列表 ({names_desc})")
 
         action = menu.exec(self.dup_table.viewport().mapToGlobal(pos))
