@@ -16,13 +16,17 @@ from PyQt6.QtGui import QColor, QFont, QIcon, QImage, QPainter, QPalette, QPen
 from PyQt6.QtWidgets import (
     QApplication,
     QCheckBox,
+    QDialog,
     QFileDialog,
     QFrame,
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
+    QInputDialog,
     QLabel,
     QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QMainWindow,
     QMenu,
     QMessageBox,
@@ -368,25 +372,33 @@ class WorkerSignals(QObject):
     error = pyqtSignal(str)
 
 
-_ACTIVE_TEST_WORKERS: set[QThread] = set()
+_ACTIVE_TEST_WORKERS: set[QObject] = set()
 
 
-class StashTestSignals(QObject):
+class StashTesterWorker(QObject):
     finished = pyqtSignal(int, int, bool, str)  # (source_id, seq, is_success, message)
 
-
-class StashTesterWorker(QThread):
     def __init__(self, source_id: int, seq: int, url: str, api_key: str):
         super().__init__()
         self.source_id = source_id
         self.seq = seq
         self.url = url
         self.api_key = api_key
-        self.signals = StashTestSignals()
+        self.signals = self
 
-    def run(self):
-        ok, msg = test_stash_connection(self.url, self.api_key)
-        self.signals.finished.emit(self.source_id, self.seq, ok, msg)
+    def start(self):
+        import threading
+
+        def _run():
+            try:
+                ok, msg = test_stash_connection(self.url, self.api_key)
+                self.finished.emit(self.source_id, self.seq, ok, msg)
+            except Exception:
+                pass
+            finally:
+                _ACTIVE_TEST_WORKERS.discard(self)
+
+        threading.Thread(target=_run, daemon=True).start()
 
 
 class EvaluationWorker(QThread):
@@ -454,6 +466,7 @@ class DuplicateActorWorker(QThread):
         alias_resolver: AliasResolver | None = None,
         db_path: str = "",
         stash_sources: list[tuple[str, str]] | None = None,
+        ignored_dup_groups: list[dict] | None = None,
     ):
         super().__init__()
         self.target_path = target_path
@@ -461,6 +474,7 @@ class DuplicateActorWorker(QThread):
         self.alias_resolver = alias_resolver
         self.db_path = db_path
         self.stash_sources = stash_sources or []
+        self.ignored_dup_groups = ignored_dup_groups or []
         self.signals = DupActorSignals()
 
     def run(self):
@@ -483,12 +497,28 @@ class DuplicateActorWorker(QThread):
             if resolver is None and (self.db_path or self.stash_sources):
                 resolver = AliasResolver(
                     excel_path=self.db_path if _Path(self.db_path).exists() else None,
+                    disjoint_groups=self.ignored_dup_groups,
                 )
                 if self.db_path and _Path(self.db_path).exists():
                     resolver.load_excel()
                 for s_url, s_key in self.stash_sources:
                     resolver.load_stash(s_url, s_key)
                 resolver.consolidate_clusters()
+            elif resolver is not None and self.ignored_dup_groups:
+                resolver.set_disjoint_groups(self.ignored_dup_groups)
+
+            # 预处理屏蔽列表（支持按演员名集合屏蔽，也支持按目录路径集合屏蔽）
+            ignored_name_sets: list[set[str]] = []
+            ignored_path_sets: list[set[str]] = []
+            for ig in self.ignored_dup_groups:
+                if not isinstance(ig, dict):
+                    continue
+                n_set = {normalize_name(n) for n in ig.get("names", []) if n and normalize_name(n)}
+                if len(n_set) >= 2:
+                    ignored_name_sets.append(n_set)
+                p_set = {_os.path.normcase(_os.path.normpath(p)) for p in ig.get("paths", []) if p}
+                if len(p_set) >= 2:
+                    ignored_path_sets.append(p_set)
 
             # 2. 遍历目标归档库，提取所有包含视频文件的演员目录
             norm_to_entries: dict[str, list[dict]] = defaultdict(list)
@@ -530,14 +560,13 @@ class DuplicateActorWorker(QThread):
                         }
                     )
 
-            # 3. 别名识别与聚类归一化
+            # 3. 别名识别与聚类归一化（仅当别名唯一且非多人共用撞名时才跨名归并）
             cluster_groups: dict[str, list[dict]] = defaultdict(list)
 
             if resolver and resolver._clusters:
                 for norm, entries in norm_to_entries.items():
-                    cluster_ids = resolver._name_to_cluster_ids.get(norm, [])
-                    if cluster_ids:
-                        cid = cluster_ids[0]
+                    if resolver.is_unambiguous_alias(norm):
+                        cid = resolver._name_to_cluster_ids[norm][0]
                         cluster_groups[f"cid_{cid}"].extend(entries)
                     else:
                         cluster_groups[f"norm_{norm}"].extend(entries)
@@ -545,38 +574,68 @@ class DuplicateActorWorker(QThread):
                 for norm, entries in norm_to_entries.items():
                     cluster_groups[f"norm_{norm}"].extend(entries)
 
-            # 4. 判定重复演员与诊断
-            # 只要同一个演员实体对应的独立目录路径数 unique_paths >= 2，即视为重复建档！
+            # 4. 判定重复演员与诊断（并按用户屏蔽列表拆分/过滤已确认非同一人的目录）
             duplicates: list[dict] = []
-            for _gkey, entries in cluster_groups.items():
-                unique_paths = {e["path"] for e in entries}
-                if len(unique_paths) < 2:
-                    continue
+            for _gkey, raw_entries in cluster_groups.items():
+                # 若同一簇中包含被用户标记为“非同一演员”的名字对，将其拆分为互不冲突的子组
+                sub_groups: list[list[dict]] = []
+                for entry in raw_entries:
+                    e_norm = normalize_name(entry["raw_name"])
+                    placed = False
+                    for sg in sub_groups:
+                        conflict = any(
+                            any(
+                                e_norm in ig_ns and normalize_name(existing["raw_name"]) in ig_ns
+                                for ig_ns in ignored_name_sets
+                            )
+                            for existing in sg
+                            if normalize_name(existing["raw_name"]) != e_norm
+                        )
+                        if not conflict:
+                            sg.append(entry)
+                            placed = True
+                            break
+                    if not placed:
+                        sub_groups.append([entry])
 
-                unique_names = list(dict.fromkeys(e["raw_name"] for e in entries))
-                unique_cats = list(dict.fromkeys(e["category"] for e in entries))
-                canonical_name = max(unique_names, key=len)
+                for entries in sub_groups:
+                    unique_paths = {e["path"] for e in entries}
+                    if len(unique_paths) < 2:
+                        continue
 
-                # 诊断特征类型
-                if len(unique_names) > 1:
-                    alias_pair = " <=> ".join(unique_names[:3])
-                    if len(unique_cats) == 1:
-                        diag = f"⚠️ 同分类别名冲突 ({alias_pair})"
+                    unique_names = list(dict.fromkeys(e["raw_name"] for e in entries))
+                    norm_paths = {_os.path.normcase(_os.path.normpath(p)) for p in unique_paths}
+                    norm_names = {normalize_name(n) for n in unique_names if normalize_name(n)}
+
+                    # 若整个候选组的路径集合或名字集合已在屏蔽列表中，跳过不提示
+                    if len(norm_names) >= 2 and any(norm_names.issubset(ig_ns) for ig_ns in ignored_name_sets):
+                        continue
+                    if any(norm_paths.issubset(ig_ps) for ig_ps in ignored_path_sets):
+                        continue
+
+                    unique_cats = list(dict.fromkeys(e["category"] for e in entries))
+                    canonical_name = max(unique_names, key=len)
+
+                    # 诊断特征类型
+                    if len(unique_names) > 1:
+                        alias_pair = " <=> ".join(unique_names[:3])
+                        if len(unique_cats) == 1:
+                            diag = f"⚠️ 同分类别名冲突 ({alias_pair})"
+                        else:
+                            diag = f"⚠️ 别名跨分类重复 ({alias_pair})"
                     else:
-                        diag = f"⚠️ 别名跨分类重复 ({alias_pair})"
-                else:
-                    if len(unique_cats) > 1:
-                        diag = f"📂 同名分散于 {len(unique_cats)} 个不同分类"
-                    else:
-                        diag = f"⚠️ 重复子目录 (共 {len(unique_paths)} 处)"
+                        if len(unique_cats) > 1:
+                            diag = f"📂 同名分散于 {len(unique_cats)} 个不同分类"
+                        else:
+                            diag = f"⚠️ 重复子目录 (共 {len(unique_paths)} 处)"
 
-                duplicates.append(
-                    {
-                        "canonical_name": canonical_name,
-                        "diag": diag,
-                        "entries": sorted(entries, key=lambda x: (x["category"], x["raw_name"])),
-                    }
-                )
+                    duplicates.append(
+                        {
+                            "canonical_name": canonical_name,
+                            "diag": diag,
+                            "entries": sorted(entries, key=lambda x: (x["category"], x["raw_name"])),
+                        }
+                    )
 
             # 排序：别名冲突优先排前，便于重点排查
             duplicates.sort(key=lambda d: (0 if "⚠️" in d["diag"] else 1, d["canonical_name"]))
@@ -649,9 +708,17 @@ class ArchiveMoverWindow(QMainWindow):
         self.last_html_report: Path | None = None
         self.last_alias_resolver: AliasResolver | None = None
         self._stash_test_seq: dict[int, int] = {1: 0, 2: 0}
+        self.ignored_dup_groups: list[dict] = [
+            {
+                "names": ["かわいまゆ", "北見唯奈"],
+                "paths": [],
+                "label": "かわいまゆ ≠ 北見唯奈",
+            }
+        ]
 
         self._init_ui()
         self._load_settings()
+        self._update_ignored_btn_label()
         self._connect_auto_save()
 
         # 启动时自动测试已启用的 Stash 源
@@ -974,6 +1041,19 @@ class ArchiveMoverWindow(QMainWindow):
         self.lbl_dup_status.setStyleSheet(f"color: {TEXT_DIM}; font-size: 12px;")
         dup_toolbar.addWidget(self.lbl_dup_status)
         dup_toolbar.addStretch()
+
+        self.btn_manage_ignored = QPushButton("🚫 屏蔽列表 (0)")
+        self.btn_manage_ignored.setFixedHeight(30)
+        self.btn_manage_ignored.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_manage_ignored.setToolTip("查看或管理已确认非同一人的屏蔽演员组合，列表内的组合不再重复提示")
+        self.btn_manage_ignored.setStyleSheet(
+            f"QPushButton {{ background-color: {BTN_BROWSE_BG}; color: {TEXT_SECONDARY}; border: 1px solid {BORDER};"
+            f" border-radius: 5px; padding: 0 12px; font-weight: 600; font-size: 12px; }}"
+            f"QPushButton:hover {{ background-color: {BTN_BROWSE_HOVER}; color: {TEXT_PRIMARY}; }}"
+        )
+        self.btn_manage_ignored.clicked.connect(self._open_ignored_dup_dialog)
+        dup_toolbar.addWidget(self.btn_manage_ignored)
+
         self.btn_scan_dup = QPushButton("扫描重复演员目录")
         self.btn_scan_dup.setFixedHeight(30)
         self.btn_scan_dup.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -1061,7 +1141,6 @@ class ArchiveMoverWindow(QMainWindow):
 
         worker = StashTesterWorker(source_id, seq, url, key)
         _ACTIVE_TEST_WORKERS.add(worker)
-        worker.finished.connect(lambda w=worker: _ACTIVE_TEST_WORKERS.discard(w))
         worker.signals.finished.connect(self._on_stash_test_result)
         worker.start()
 
@@ -1183,6 +1262,7 @@ class ArchiveMoverWindow(QMainWindow):
             "stash2_key": self.txt_stash2_key.text().strip(),
             "dry_run": self.chk_dry_run.isChecked(),
             "clean_empty": self.chk_clean_empty.isChecked(),
+            "ignored_dup_groups": self.ignored_dup_groups,
         }
         try:
             config_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1230,6 +1310,8 @@ class ArchiveMoverWindow(QMainWindow):
                 self.chk_dry_run.setChecked(bool(data["dry_run"]))
             if "clean_empty" in data:
                 self.chk_clean_empty.setChecked(bool(data["clean_empty"]))
+            if "ignored_dup_groups" in data and isinstance(data["ignored_dup_groups"], list):
+                self.ignored_dup_groups = data["ignored_dup_groups"]
             logger.debug("Archive mover settings loaded from %s", config_path)
         except Exception as e:
             logger.warning("Failed to load settings from %s: %s", config_path, e)
@@ -1265,6 +1347,7 @@ class ArchiveMoverWindow(QMainWindow):
 
         alias_resolver = AliasResolver(
             excel_path=db_path if Path(db_path).exists() else None,
+            disjoint_groups=self.ignored_dup_groups,
         )
         if Path(db_path).exists():
             alias_resolver.load_excel()
@@ -1466,6 +1549,10 @@ class ArchiveMoverWindow(QMainWindow):
             webbrowser.open(self.last_html_report.as_uri())
 
     # ── Duplicate-actor scan ─────────────────────────────────────────────────
+    def _update_ignored_btn_label(self):
+        if hasattr(self, "btn_manage_ignored"):
+            self.btn_manage_ignored.setText(f"🚫 屏蔽列表 ({len(self.ignored_dup_groups)})")
+
     def _start_dup_scan(self, *, auto: bool = False):
         self._save_settings()
         target = self.txt_target.text().strip()
@@ -1489,6 +1576,7 @@ class ArchiveMoverWindow(QMainWindow):
             alias_resolver=self.last_alias_resolver,
             db_path=db_path,
             stash_sources=stash_sources,
+            ignored_dup_groups=self.ignored_dup_groups,
         )
         self.dup_worker.signals.finished.connect(self._on_dup_finished)
         self.dup_worker.signals.error.connect(self._on_dup_error)
@@ -1646,6 +1734,10 @@ class ArchiveMoverWindow(QMainWindow):
         if other_entries:
             act_merge = menu.addAction(f"🔀 将「{canonical_name}」的其他 {len(other_entries)} 个目录合并到此...")
 
+        unique_names = list(dict.fromkeys(e.get("raw_name", "") for e in all_entries if e.get("raw_name")))
+        names_desc = " ≠ ".join(unique_names[:3]) if len(unique_names) > 1 else canonical_name
+        act_ignore = menu.addAction(f"🚫 确认非同一演员：加入屏蔽列表 ({names_desc})")
+
         action = menu.exec(self.dup_table.viewport().mapToGlobal(pos))
         if action == act_open_curr:
             if Path(curr_path).exists():
@@ -1657,6 +1749,141 @@ class ArchiveMoverWindow(QMainWindow):
                     os.startfile(str(p))
         elif act_merge and action == act_merge:
             self._merge_duplicate_actor_dirs(group_data, curr_entry, other_entries)
+        elif action == act_ignore:
+            self._ignore_duplicate_actor_group(group_data)
+
+    def _ignore_duplicate_actor_group(self, group_data: dict):
+        """将当前选中的重复演员组加入屏蔽列表（确认不是同一人），后续不再扫描提示。"""
+        entries = group_data.get("entries", [])
+        if not entries:
+            return
+        unique_names = sorted({e.get("raw_name", "") for e in entries if e.get("raw_name")})
+        unique_paths = sorted({e.get("path", "") for e in entries if e.get("path")})
+        cats_desc = " | ".join(f"{e.get('category', '')}/{e.get('raw_name', '')}" for e in entries[:4])
+        if len(unique_names) >= 2:
+            label = f"{' ≠ '.join(unique_names)} ({cats_desc})"
+        else:
+            label = f"{unique_names[0] if unique_names else '同名不同人'} ({cats_desc})"
+
+        rule = {
+            "names": unique_names if len(unique_names) >= 2 else [],
+            "paths": unique_paths,
+            "label": label,
+        }
+        self.ignored_dup_groups.append(rule)
+        if self.last_alias_resolver is not None:
+            self.last_alias_resolver.set_disjoint_groups(self.ignored_dup_groups)
+        self._update_ignored_btn_label()
+        self._save_settings()
+        self._set_status(f"🚫 已加入屏蔽列表：{label}（后续扫描将不再作为同一演员提示）", ok=True)
+        self._start_dup_scan(auto=True)
+
+    def _open_ignored_dup_dialog(self):
+        """弹出屏蔽列表管理窗口，支持查看、手动添加撞名组合、或移除已有屏蔽项。"""
+        dlg = QDialog(self)
+        dlg.setWindowTitle("管理非同一演员屏蔽列表")
+        dlg.resize(580, 380)
+
+        layout = QVBoxLayout(dlg)
+        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setSpacing(10)
+
+        tip = QLabel(
+            "以下演员/目录组合已被确认为【同名不同人 / 别名误关联】，"
+            "在重复演员目录扫描与归档移动评估时将不再把她们视为同一演员："
+        )
+        tip.setWordWrap(True)
+        tip.setStyleSheet(f"color: {TEXT_SECONDARY}; font-size: 12px;")
+        layout.addWidget(tip)
+
+        list_widget = QListWidget()
+        list_widget.setStyleSheet(
+            f"QListWidget {{ background-color: {BG_WIDGET}; border: 1px solid {BORDER}; border-radius: 6px; padding: 4px; color: {TEXT_PRIMARY}; font-size: 12px; }}"
+            f"QListWidget::item {{ padding: 6px 8px; border-radius: 4px; }}"
+            f"QListWidget::item:selected {{ background-color: {ROW_SELECTED}; color: #ffffff; }}"
+        )
+        layout.addWidget(list_widget)
+
+        changed = False
+
+        def _refresh_list():
+            list_widget.clear()
+            for idx, ig in enumerate(self.ignored_dup_groups):
+                lbl_text = ig.get("label") or " ≠ ".join(ig.get("names", [])) or " | ".join(ig.get("paths", []))
+                it = QListWidgetItem(f"{idx + 1}.  {lbl_text}")
+                it.setData(Qt.ItemDataRole.UserRole, idx)
+                list_widget.addItem(it)
+
+        _refresh_list()
+
+        btn_bar = QHBoxLayout()
+        btn_add = QPushButton("➕ 手动添加非同一人组合")
+        btn_add.setFixedHeight(30)
+        btn_add.setCursor(Qt.CursorShape.PointingHandCursor)
+
+        btn_del = QPushButton("🗑️ 移除选中项")
+        btn_del.setFixedHeight(30)
+        btn_del.setCursor(Qt.CursorShape.PointingHandCursor)
+
+        btn_close = QPushButton("关闭")
+        btn_close.setFixedHeight(30)
+        btn_close.setFixedWidth(80)
+        btn_close.setCursor(Qt.CursorShape.PointingHandCursor)
+
+        def _on_add():
+            nonlocal changed
+            text, ok = QInputDialog.getText(
+                dlg,
+                "添加非同一演员屏蔽组合",
+                "请输入需要隔离的 2 个或多个演员名（用逗号分隔，例如：北見唯奈, かわいまゆ）：",
+            )
+            if not ok or not text.strip():
+                return
+            names = [p.strip() for p in re.split(r"[,，、/|]+", text.strip()) if p.strip()]
+            unique_names = list(dict.fromkeys(names))
+            if len(unique_names) < 2:
+                QMessageBox.warning(dlg, "提示", "请至少输入 2 个不同的演员名称（用逗号分隔）。")
+                return
+            self.ignored_dup_groups.append(
+                {
+                    "names": unique_names,
+                    "paths": [],
+                    "label": " ≠ ".join(unique_names),
+                }
+            )
+            changed = True
+            _refresh_list()
+
+        def _on_del():
+            nonlocal changed
+            curr = list_widget.currentItem()
+            if not curr:
+                return
+            idx = curr.data(Qt.ItemDataRole.UserRole)
+            if isinstance(idx, int) and 0 <= idx < len(self.ignored_dup_groups):
+                self.ignored_dup_groups.pop(idx)
+                changed = True
+                _refresh_list()
+
+        btn_add.clicked.connect(_on_add)
+        btn_del.clicked.connect(_on_del)
+        btn_close.clicked.connect(dlg.accept)
+
+        btn_bar.addWidget(btn_add)
+        btn_bar.addWidget(btn_del)
+        btn_bar.addStretch()
+        btn_bar.addWidget(btn_close)
+        layout.addLayout(btn_bar)
+
+        dlg.exec()
+
+        if changed:
+            if self.last_alias_resolver is not None:
+                self.last_alias_resolver.set_disjoint_groups(self.ignored_dup_groups)
+            self._update_ignored_btn_label()
+            self._save_settings()
+            if self.txt_target.text().strip():
+                self._start_dup_scan(auto=True)
 
     def _merge_duplicate_actor_dirs(self, group_data: dict, target_entry: dict, source_entries: list[dict]):
         """将同名/别名演员的其他目录下的番号移动合并到选中的目标目录，并清理源空目录。

@@ -108,6 +108,7 @@ class AliasResolver:
         excel_path: str | Path | None = None,
         stash_url: str = "",
         stash_api_key: str = "",
+        disjoint_groups: list[list[str]] | list[dict] | None = None,
     ):
         self.excel_path = Path(excel_path) if excel_path else None
         self.stash_url = stash_url.strip().rstrip("/")
@@ -115,13 +116,48 @@ class AliasResolver:
 
         # Each cluster represents one performer identity (set of normalized names/aliases)
         self._clusters: list[set[str]] = []
+        self._cluster_sources: list[str] = []
         # Index: normalized name -> list of cluster IDs
         self._name_to_cluster_ids: dict[str, list[int]] = defaultdict(list)
+        # Names that appear in multiple distinct performer records within the same source (homonyms / 撞名)
+        self._homonym_names: set[str] = set()
+        # User-confirmed non-same-actor sets (屏蔽列表)
+        self._disjoint_groups: list[set[str]] = []
+        if disjoint_groups:
+            self.set_disjoint_groups(disjoint_groups)
 
         self.loaded_excel_count = 0
         self.loaded_stash_count = 0
 
-    def register_performer_cluster(self, names: list[str]) -> None:
+    def set_disjoint_groups(self, groups: list[list[str]] | list[dict] | None) -> None:
+        """Register user-confirmed non-same-actor groups so they are never matched as aliases."""
+        self._disjoint_groups.clear()
+        if not groups:
+            return
+        for item in groups:
+            raw_names = item.get("names", []) if isinstance(item, dict) else item
+            if not isinstance(raw_names, list):
+                continue
+            norm_set = {normalize_name(x) for x in raw_names if x and normalize_name(x)}
+            if len(norm_set) >= 2:
+                self._disjoint_groups.append(norm_set)
+
+    def is_disjoint_pair(self, name_a: str, name_b: str) -> bool:
+        """Return True if user explicitly marked name_a and name_b as different actors."""
+        na = normalize_name(name_a)
+        nb = normalize_name(name_b)
+        if not na or not nb or na == nb:
+            return False
+        return any(na in g and nb in g for g in self._disjoint_groups)
+
+    def is_unambiguous_alias(self, name: str) -> bool:
+        """Return True if the name maps to a single performer cluster and is not a homonym."""
+        norm = normalize_name(name)
+        if not norm or norm in self._homonym_names:
+            return False
+        return len(self._name_to_cluster_ids.get(norm, [])) == 1
+
+    def register_performer_cluster(self, names: list[str], source: str = "") -> None:
         """Register one performer's collection of names/aliases without cross-cluster infection."""
         clean_names = set()
         for raw in names:
@@ -139,6 +175,7 @@ class AliasResolver:
 
         cluster_id = len(self._clusters)
         self._clusters.append(clean_names)
+        self._cluster_sources.append(source)
         for norm in clean_names:
             self._name_to_cluster_ids[norm].append(cluster_id)
 
@@ -173,7 +210,7 @@ class AliasResolver:
                             cluster.append(al.strip())
 
                 if cluster:
-                    self.register_performer_cluster(cluster)
+                    self.register_performer_cluster(cluster, source="excel")
                     count += 1
 
             wb.close()
@@ -186,26 +223,40 @@ class AliasResolver:
 
     def consolidate_clusters(self) -> int:
         """
-        Merge performer clusters that share common valid aliases safely.
-        This transitively unifies:
-        - Excel records
-        - NAS Stash performers (with custom Simplified Chinese names)
-        - javstash / Remote Stash performers (with Kanji / Romaji / extra aliases)
-        into a single deduplicated, comprehensive alias knowledge graph,
-        while preventing generic nicknames (e.g. 'あみ', 'ゆかり', 'カノン') from causing false bridges.
+        Merge performer clusters that share common valid aliases safely across different sources.
+        Safety guarantees:
+        1. Intra-source homonym detection: any stage name appearing in 2+ distinct records within the
+           same source (e.g. '中田みなみ', 'みはる', '山本玲奈') is marked as a homonym (撞名) and never bridges.
+        2. Romaji homophone guard: two Kanji-bearing clusters cannot be bridged solely by an ASCII/Romaji
+           name (prevents 'Miho Uehara' from merging '上原美帆' and '上原美穂').
+        3. One-record-per-source constraint: a merged component never combines two separate performer
+           records from the same source, prioritizing the neighbor with the largest alias overlap.
         """
         if not self._clusters:
             return 0
 
         clusters = self._clusters
+        cluster_sources = self._cluster_sources if len(self._cluster_sources) == len(clusters) else [""] * len(clusters)
 
-        # 1. Count occurrences of each normalized name across all clusters
+        # 1. Count occurrences of each normalized name across all clusters & per source
         name_to_cids: dict[str, set[int]] = defaultdict(set)
-        for cid, cluster in enumerate(clusters):
+        name_source_counts: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+        for cid, (cluster, src) in enumerate(zip(clusters, cluster_sources, strict=False)):
             for name in cluster:
                 name_to_cids[name].add(cid)
+                if src:
+                    name_source_counts[name][src] += 1
+
+        # Any name appearing in >1 record within the same source is a proven homonym (撞名)
+        homonyms: set[str] = {
+            name for name, src_map in name_source_counts.items() if any(cnt > 1 for cnt in src_map.values())
+        }
+
+        cluster_has_kanji = [any(re.search(r"[\u4e00-\u9fff]", x) for x in c) for c in clusters]
 
         def is_safe_bridge_name(name: str) -> bool:
+            if name in homonyms:
+                return False
             cids = name_to_cids[name]
             # If a name connects more than 3 clusters, it's a generic nickname/noise (e.g. 'ゆい', 'まい')
             if len(cids) > 3:
@@ -223,31 +274,55 @@ class AliasResolver:
                 c_list = list(cids)
                 for i in range(len(c_list)):
                     for j in range(i + 1, len(c_list)):
-                        cluster_adj[c_list[i]].add(c_list[j])
-                        cluster_adj[c_list[j]].add(c_list[i])
+                        ci, cj = c_list[i], c_list[j]
+                        # Never connect two distinct performer records from the same non-empty source
+                        if cluster_sources[ci] and cluster_sources[ci] == cluster_sources[cj]:
+                            continue
+                        # Prevent Romaji homophone collision (e.g. 'Miho Uehara': '上原美帆' vs '上原美穂')
+                        if name.isascii() and cluster_has_kanji[ci] and cluster_has_kanji[cj]:
+                            if not any(not x.isascii() for x in (clusters[ci] & clusters[cj])):
+                                continue
+                        # Respect user-configured disjoint groups
+                        if self._disjoint_groups and any(
+                            self.is_disjoint_pair(a, b) for a in clusters[ci] for b in clusters[cj]
+                        ):
+                            continue
+                        cluster_adj[ci].add(cj)
+                        cluster_adj[cj].add(ci)
 
-        # 3. Traverse connected components with a safety ceiling
+        # 3. Traverse connected components with 1-per-source constraint and overlap priority
         visited_clusters: set[int] = set()
         merged_clusters: list[set[str]] = []
+        merged_sources: list[str] = []
         new_name_to_cluster_ids: dict[str, list[int]] = defaultdict(list)
 
         for cid in range(len(clusters)):
             if cid in visited_clusters:
                 continue
 
-            comp_cids = []
-            queue = [cid]
+            comp_cids = [cid]
+            comp_sources = {cluster_sources[cid]} if cluster_sources[cid] else set()
             visited_clusters.add(cid)
+            queue = [cid]
 
             while queue:
                 curr = queue.pop(0)
-                comp_cids.append(curr)
-                for neighbor in cluster_adj[curr]:
-                    if neighbor not in visited_clusters:
-                        # Safety guard: prevent runaway transitive chains beyond 6 entries
-                        if len(comp_cids) < 6:
-                            visited_clusters.add(neighbor)
-                            queue.append(neighbor)
+                neighbors = sorted(
+                    cluster_adj[curr],
+                    key=lambda nb: len(clusters[curr] & clusters[nb]),
+                    reverse=True,
+                )
+                for neighbor in neighbors:
+                    if neighbor in visited_clusters or len(comp_cids) >= 6:
+                        continue
+                    nb_src = cluster_sources[neighbor]
+                    if nb_src and nb_src in comp_sources:
+                        continue
+                    visited_clusters.add(neighbor)
+                    comp_cids.append(neighbor)
+                    if nb_src:
+                        comp_sources.add(nb_src)
+                    queue.append(neighbor)
 
             merged_set: set[str] = set()
             for c in comp_cids:
@@ -255,13 +330,26 @@ class AliasResolver:
 
             new_cid = len(merged_clusters)
             merged_clusters.append(merged_set)
+            merged_sources.append(",".join(sorted(comp_sources)))
             for n in merged_set:
                 new_name_to_cluster_ids[n].append(new_cid)
 
+        # Any name that still belongs to multiple merged clusters is also a homonym
+        for n, cids_list in new_name_to_cluster_ids.items():
+            if len(cids_list) > 1:
+                homonyms.add(n)
+
         old_count = len(self._clusters)
         self._clusters = merged_clusters
+        self._cluster_sources = merged_sources
         self._name_to_cluster_ids = new_name_to_cluster_ids
-        logger.info("Consolidated %d performer clusters into %d unified clusters", old_count, len(self._clusters))
+        self._homonym_names = homonyms
+        logger.info(
+            "Consolidated %d performer clusters into %d unified clusters (%d homonyms isolated)",
+            old_count,
+            len(self._clusters),
+            len(self._homonym_names),
+        )
         return len(self._clusters)
 
     def load_stash(self, url: str = "", api_key: str = "", force_refresh: bool = False) -> int:
@@ -432,6 +520,7 @@ class AliasResolver:
             logger.warning("Could not retrieve performers from Stash API: %s", target_url)
             return 0
 
+        source_tag = f"stash:{target_url.lower()}"
         count = 0
         for p in performers:
             name = p.get("name")
@@ -439,7 +528,7 @@ class AliasResolver:
             aliases = aliases or []
             cluster = [name] + aliases if name else aliases
             if cluster:
-                self.register_performer_cluster(cluster)
+                self.register_performer_cluster(cluster, source=source_tag)
                 count += 1
 
         self.loaded_stash_count += count
@@ -466,20 +555,37 @@ class AliasResolver:
             match_type = "direct" if raw_name == info.actor_name else "normalized"
             return info, match_type, info.actor_name
 
-        # 2. Check performer clusters (Row-based, avoiding cross-contamination)
+        # 2. Check performer clusters (Row-based, avoiding cross-contamination & homonym collisions)
         if norm_source in self._name_to_cluster_ids:
             cluster_ids = self._name_to_cluster_ids[norm_source]
+            # If the source name itself is a multi-performer homonym (e.g. 'みはる', '中田みなみ'),
+            # do not guess a differently-named alias folder in the archive!
+            if norm_source in self._homonym_names or len(cluster_ids) > 1:
+                logger.info(
+                    "Skipping cross-alias match for homonym source actor '%s' (belongs to %d clusters)",
+                    source_actor_name,
+                    len(cluster_ids),
+                )
+                return None, "ambiguous_alias", ""
+
             hits: list[TargetActorInfo] = []
             seen_target_names: set[str] = set()
 
             for c_id in cluster_ids:
                 cluster = self._clusters[c_id]
                 for possible_norm in cluster:
-                    if possible_norm in target_actors_by_norm:
-                        cand = target_actors_by_norm[possible_norm]
-                        if cand.actor_name not in seen_target_names:
-                            hits.append(cand)
-                            seen_target_names.add(cand.actor_name)
+                    if possible_norm not in target_actors_by_norm:
+                        continue
+                    # Do not match into a target folder whose name is a multi-performer homonym
+                    if not self.is_unambiguous_alias(possible_norm):
+                        continue
+                    # Respect user-confirmed non-same-actor exclusion list (屏蔽列表)
+                    if self.is_disjoint_pair(norm_source, possible_norm):
+                        continue
+                    cand = target_actors_by_norm[possible_norm]
+                    if cand.actor_name not in seen_target_names:
+                        hits.append(cand)
+                        seen_target_names.add(cand.actor_name)
 
             if len(hits) == 1:
                 target_info = hits[0]
@@ -504,13 +610,17 @@ class AliasResolver:
                 info = target_actors_by_norm[first_actor_norm]
                 return info, "primary_actor", info.actor_name
 
-            # Try alias on first actor
-            if first_actor_norm in self._name_to_cluster_ids:
+            # Try alias on first actor (only if unambiguous and not disjoint)
+            if self.is_unambiguous_alias(first_actor_norm):
                 cluster_ids = self._name_to_cluster_ids[first_actor_norm]
                 p_hits = []
                 for c_id in cluster_ids:
                     for possible_norm in self._clusters[c_id]:
-                        if possible_norm in target_actors_by_norm:
+                        if (
+                            possible_norm in target_actors_by_norm
+                            and self.is_unambiguous_alias(possible_norm)
+                            and not self.is_disjoint_pair(first_actor_norm, possible_norm)
+                        ):
                             p_hits.append(target_actors_by_norm[possible_norm])
                 if len(p_hits) == 1:
                     info = p_hits[0]

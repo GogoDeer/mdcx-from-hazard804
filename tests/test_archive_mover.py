@@ -494,3 +494,75 @@ def test_stash_connection_and_status_indicators(monkeypatch):
         # Unchecking resets status indicator
         win.chk_stash1.setChecked(False)
         assert win.lbl_stash1_status.text() == ""
+
+
+def test_homonym_isolation_and_ignored_dup_groups():
+    from tools.archive_mover.gui import DuplicateActorWorker
+    from tools.archive_mover.models import TargetActorInfo
+
+    resolver = AliasResolver(
+        disjoint_groups=[{"names": ["かわいまゆ", "北見唯奈"], "paths": [], "label": "かわいまゆ ≠ 北見唯奈"}]
+    )
+
+    # Case 1: Upstream DB lists '北見唯奈' and 'かわいまゆ' in the same entry, but user put them in disjoint_groups
+    resolver.register_performer_cluster(["水波ここあ", "北見唯奈", "かわいまゆ"], source="excel")
+
+    # Case 2: Romaji homophone ('Miho Uehara' shared by '上原美帆/美森系' and '上原美穂/甲斐ミハル/みはる')
+    # plus 'みはる' shared by multiple actresses
+    resolver.register_performer_cluster(["宫崎爱莉", "上原美帆", "美森系", "Miho Uehara"], source="excel")
+    resolver.register_performer_cluster(["甲斐ミハル", "上原美穂", "みはる", "Miho Uehara"], source="stash:javstash")
+    resolver.register_performer_cluster(["久松美晴", "みはる"], source="stash:javstash")
+
+    # Case 3: Intra-source homonym ('中田みなみ' shared by two separate performers in javstash: '和久井もも/伊藤洋子' and '天乃みくる')
+    resolver.register_performer_cluster(["西田ももこ", "伊藤洋子", "和久井もも", "桃果葉奈"], source="excel")
+    resolver.register_performer_cluster(["和久井もも", "桃果葉奈", "中田みなみ"], source="stash:javstash")
+    resolver.register_performer_cluster(["天乃みくる", "青山くるみ", "中田みなみ"], source="stash:javstash")
+
+    resolver.consolidate_clusters()
+
+    # Verify homonyms are isolated
+    assert not resolver.is_unambiguous_alias("みはる")
+    assert not resolver.is_unambiguous_alias("中田みなみ")
+    assert resolver.is_unambiguous_alias("美森系")
+    assert resolver.is_unambiguous_alias("伊藤洋子")
+
+    # Verify ArchiveMover alias resolution does NOT falsely match any of the 3 pairs
+    target_actors = {
+        normalize_name("北見唯奈"): TargetActorInfo("北見唯奈", "素人", Path("/t/素人/北見唯奈"), set()),
+        normalize_name("美森系"): TargetActorInfo("美森系", "美", Path("/t/美/美森系"), set()),
+        normalize_name("伊藤洋子"): TargetActorInfo("伊藤洋子", "孕", Path("/t/孕/伊藤洋子"), set()),
+    }
+
+    info1, m1, _ = resolver.resolve_target_actor("かわいまゆ", target_actors)
+    assert info1 is None and m1 == "none"
+
+    info2, m2, _ = resolver.resolve_target_actor("みはる", target_actors)
+    assert info2 is None and m2 == "ambiguous_alias"
+
+    info3, m3, _ = resolver.resolve_target_actor("中田みなみ", target_actors)
+    assert info3 is None and m3 == "ambiguous_alias"
+
+    # Verify DuplicateActorWorker does NOT flag any of the 3 non-same-actor pairs
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        target = Path(tmp_dir) / "target"
+        for cat, actor, code in [
+            ("素人", "北見唯奈", "C0930-hitozuma0855"),
+            ("孕", "かわいまゆ", "GACHI-963"),
+            ("孕", "みはる", "FC2-1221295"),
+            ("美", "美森系", "CWPBD-128"),
+            ("孕", "伊藤洋子", "073118_311"),
+            ("普通级", "中田みなみ", "090222-001"),
+        ]:
+            d = target / cat / actor / code
+            d.mkdir(parents=True)
+            (d / "v.mp4").touch()
+
+        worker = DuplicateActorWorker(
+            target_path=str(target),
+            alias_resolver=resolver,
+            ignored_dup_groups=[{"names": ["かわいまゆ", "北見唯奈"], "paths": [], "label": "かわいまゆ ≠ 北見唯奈"}],
+        )
+        results = []
+        worker.signals.finished.connect(lambda dups, _res: results.extend(dups))
+        worker.run()
+        assert len(results) == 0
