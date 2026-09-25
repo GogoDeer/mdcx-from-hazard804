@@ -1972,7 +1972,7 @@ class ArchiveMoverWindow(QMainWindow):
                 self._start_dup_scan(auto=True)
 
     def _get_merge_candidate_names(self, target_entry: dict, source_entries: list[dict]) -> list[tuple[str, str]]:
-        """收集当前重复演员组的所有可选演员名称（含当前目录名、待合并目录名、别名库名称）。"""
+        """收集当前重复演员组的所有可选演员名称（含当前目录名、待合并目录名、影片NFO标题/简介实名命中、别名库名称）。"""
         candidates: list[tuple[str, str]] = []
         seen: set[str] = set()
 
@@ -1986,10 +1986,46 @@ class ArchiveMoverWindow(QMainWindow):
         for s in source_entries:
             _add(s["raw_name"], f"待合并目录 ({s['category']})")
 
+        # 读取目录内最多 12 个 NFO 的标题/原标题/简介文本，用于识别历史刮削误替换前的真实演员名
+        nfo_text_chunks: list[str] = []
+        for entry in [target_entry, *source_entries]:
+            p = Path(entry.get("path", ""))
+            if not p.exists() or not p.is_dir():
+                continue
+            try:
+                for child in sorted(p.iterdir(), key=lambda c: c.name)[:8]:
+                    if not child.is_dir():
+                        continue
+                    for nfo_file in list(child.glob("*.nfo"))[:1]:
+                        try:
+                            txt = nfo_file.read_text(encoding="utf-8", errors="replace")
+                            for tag in ("title", "originaltitle", "plot", "outline"):
+                                for m in re.finditer(rf"<{tag}>(.*?)</{tag}>", txt, re.DOTALL | re.IGNORECASE):
+                                    nfo_text_chunks.append(m.group(1))
+                        except OSError:
+                            pass
+                    if len(nfo_text_chunks) >= 36:
+                        break
+            except OSError:
+                pass
+        combined_nfo_text = "\n".join(nfo_text_chunks)
+
         if self.last_alias_resolver is not None:
+            alias_pool: list[str] = []
             for base_name in [target_entry["raw_name"]] + [s["raw_name"] for s in source_entries]:
-                for al in self.last_alias_resolver.get_actor_aliases(base_name):
-                    _add(al, "演员别名库")
+                for al in self.last_alias_resolver.get_actor_aliases(base_name, include_ambiguous=True):
+                    if al not in alias_pool:
+                        alias_pool.append(al)
+
+            # 1. 优先排列在影片 NFO 标题/简介中直接出现的演员别名（如被刮削器误替换前的原艺名）
+            if combined_nfo_text:
+                for al in alias_pool:
+                    if len(al.strip()) >= 2 and al.strip() in combined_nfo_text:
+                        _add(al, "🎯 影片NFO标题/简介实名命中 · 演员别名库")
+
+            # 2. 其余别名库候选名称
+            for al in alias_pool:
+                _add(al, "演员别名库")
 
         return candidates
 

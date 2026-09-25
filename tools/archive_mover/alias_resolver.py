@@ -165,18 +165,39 @@ class AliasResolver:
             return False
         return len(self._name_to_cluster_ids.get(norm, [])) == 1
 
-    def get_actor_aliases(self, actor_name: str) -> list[str]:
-        """Return all unambiguous display names/aliases belonging to the same performer cluster."""
+    def get_actor_aliases(self, actor_name: str, *, include_ambiguous: bool = False) -> list[str]:
+        """Return display names/aliases belonging to the performer cluster(s).
+
+        When include_ambiguous is False (default), only unambiguous non-homonym aliases are returned.
+        When include_ambiguous is True (e.g. for human selection in merge dialog), all associated
+        cluster names (except explicitly disjoint pairs) are returned, sorted with CJK/Kana first.
+        """
         norm = normalize_name(actor_name)
         if not norm:
             return []
         cids = self._name_to_cluster_ids.get(norm, [])
-        if len(cids) != 1 or norm in self._homonym_names:
+        if not cids:
             return [self._norm_to_display.get(norm, actor_name.strip())]
-        cluster = self._clusters[cids[0]]
+        if not include_ambiguous and (len(cids) != 1 or norm in self._homonym_names):
+            return [self._norm_to_display.get(norm, actor_name.strip())]
+
+        candidate_norms: set[str] = set()
+        for cid in cids:
+            candidate_norms.update(self._clusters[cid])
+
+        def _sort_key(n: str) -> tuple[int, str]:
+            disp = self._norm_to_display.get(n, n)
+            # Prioritize CJK / Japanese Kana names (0), then ASCII/Romaji (1), then others like Hangul (2)
+            has_cjk_or_kana = any(("\u4e00" <= ch <= "\u9fff") or ("\u3040" <= ch <= "\u30ff") for ch in disp)
+            if has_cjk_or_kana:
+                return (0, disp)
+            if disp.isascii():
+                return (1, disp)
+            return (2, disp)
+
         result: list[str] = []
-        for n in sorted(cluster):
-            if n != norm and n in self._homonym_names:
+        for n in sorted(candidate_norms, key=_sort_key):
+            if not include_ambiguous and n != norm and n in self._homonym_names:
                 continue
             if self.is_disjoint_pair(norm, n):
                 continue
