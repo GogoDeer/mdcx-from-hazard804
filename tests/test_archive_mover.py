@@ -380,7 +380,6 @@ def test_gui_settings_persistence(monkeypatch):
         win.chk_stash2.setChecked(True)
         win.txt_stash2_url.setText("http://192.168.1.100:9999")
         win.txt_stash2_key.setText("remote_secret_456")
-        win.chk_dry_run.setChecked(False)
         win.chk_clean_empty.setChecked(False)
 
         # Trigger save
@@ -400,7 +399,6 @@ def test_gui_settings_persistence(monkeypatch):
         assert saved["stash2_enabled"] is True
         assert saved["stash2_url"] == "http://192.168.1.100:9999"
         assert saved["stash2_key"] == "remote_secret_456"
-        assert saved["dry_run"] is False
         assert saved["clean_empty"] is False
 
         # 2. Second run: new window instance loads saved settings automatically
@@ -415,7 +413,6 @@ def test_gui_settings_persistence(monkeypatch):
         assert win2.chk_stash2.isChecked() is True
         assert win2.txt_stash2_url.text() == "http://192.168.1.100:9999"
         assert win2.txt_stash2_key.text() == "remote_secret_456"
-        assert win2.chk_dry_run.isChecked() is False
         assert win2.chk_clean_empty.isChecked() is False
 
         # Verify enabled stash sources list contains both

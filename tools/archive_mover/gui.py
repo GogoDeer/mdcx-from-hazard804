@@ -933,11 +933,6 @@ class ArchiveMoverWindow(QMainWindow):
         bar = QHBoxLayout()
         bar.setSpacing(10)
 
-        self.chk_dry_run = QCheckBox("模拟预演")
-        self.chk_dry_run.setChecked(True)
-        self.chk_dry_run.setStyleSheet(f"QCheckBox {{ color: {ACCENT_BLUE}; font-weight: 700; font-size: 13px; }}")
-        bar.addWidget(self.chk_dry_run)
-
         self.chk_clean_empty = QCheckBox("清理源端空目录")
         self.chk_clean_empty.setChecked(True)
         self.chk_clean_empty.setStyleSheet(f"QCheckBox {{ color: {TEXT_SECONDARY}; font-size: 12px; }}")
@@ -1263,7 +1258,6 @@ class ArchiveMoverWindow(QMainWindow):
         self.txt_stash2_key.editingFinished.connect(
             lambda: self._test_stash_async(2) if self.chk_stash2.isChecked() else None
         )
-        self.chk_dry_run.toggled.connect(self._save_settings)
         self.chk_clean_empty.toggled.connect(self._save_settings)
 
     def _save_settings(self):
@@ -1282,7 +1276,6 @@ class ArchiveMoverWindow(QMainWindow):
             "stash2_enabled": self.chk_stash2.isChecked(),
             "stash2_url": self.txt_stash2_url.text().strip(),
             "stash2_key": self.txt_stash2_key.text().strip(),
-            "dry_run": self.chk_dry_run.isChecked(),
             "clean_empty": self.chk_clean_empty.isChecked(),
             "ignored_dup_groups": self.ignored_dup_groups,
         }
@@ -1328,8 +1321,6 @@ class ArchiveMoverWindow(QMainWindow):
             if "stash2_key" in data and data["stash2_key"] is not None:
                 self.txt_stash2_key.setText(str(data["stash2_key"]))
 
-            if "dry_run" in data:
-                self.chk_dry_run.setChecked(bool(data["dry_run"]))
             if "clean_empty" in data:
                 self.chk_clean_empty.setChecked(bool(data["clean_empty"]))
             if "ignored_dup_groups" in data and isinstance(data["ignored_dup_groups"], list):
@@ -1370,7 +1361,7 @@ class ArchiveMoverWindow(QMainWindow):
 
         mover = ArchiveMover(
             alias_resolver=None,
-            dry_run=self.chk_dry_run.isChecked(),
+            dry_run=False,
             clean_empty_dirs=self.chk_clean_empty.isChecked(),
         )
 
@@ -1392,22 +1383,20 @@ class ArchiveMoverWindow(QMainWindow):
         if not self.last_report or not self.last_target_index:
             return
 
-        dry_run = self.chk_dry_run.isChecked()
         items_to_move = [it for it in self.last_report.items if it.status == MoveStatus.READY]
 
         if not items_to_move:
             QMessageBox.information(self, "提示", "当前没有可移动的项目。")
             return
 
-        if not dry_run:
-            ret = QMessageBox.question(
-                self,
-                "确认正式移动",
-                f"当前为【真实执行模式】！\n即将把 {len(items_to_move)} 个番号目录移动到归档区对应演员目录下。\n确定继续吗？",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            )
-            if ret != QMessageBox.StandardButton.Yes:
-                return
+        ret = QMessageBox.question(
+            self,
+            "确认正式移动",
+            f"即将把 {len(items_to_move)} 个番号目录移动到归档区对应演员目录下。\n确定继续吗？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if ret != QMessageBox.StandardButton.Yes:
+            return
 
         self.btn_scan.setEnabled(False)
         self.btn_execute.setEnabled(False)
@@ -1419,7 +1408,7 @@ class ArchiveMoverWindow(QMainWindow):
 
         mover = ArchiveMover(
             alias_resolver=self.last_alias_resolver,
-            dry_run=dry_run,
+            dry_run=False,
             clean_empty_dirs=self.chk_clean_empty.isChecked(),
         )
         self.exec_worker = ExecutionWorker(mover, self.last_report, self.last_target_index)

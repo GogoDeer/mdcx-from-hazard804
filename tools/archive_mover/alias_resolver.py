@@ -51,7 +51,7 @@ def _get_stash_cache_path(url: str) -> Path:
     return userdata_dir / f"stash_cache_{h}.json"
 
 
-def test_stash_connection(url: str, api_key: str = "", timeout: float = 6.0) -> tuple[bool, str]:
+def test_stash_connection(url: str, api_key: str = "", timeout: float = 12.0) -> tuple[bool, str]:
     """Test connectivity and ApiKey authentication for a Stash or Stash-box endpoint.
 
     Returns (is_success, status_description).
