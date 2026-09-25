@@ -123,6 +123,8 @@ class AliasResolver:
         self._cluster_sources: list[str] = []
         # Index: normalized name -> list of cluster IDs
         self._name_to_cluster_ids: dict[str, list[int]] = defaultdict(list)
+        # Preserve original display name for each normalized name
+        self._norm_to_display: dict[str, str] = {}
         # Names that appear in multiple distinct performer records within the same source (homonyms / 撞名)
         self._homonym_names: set[str] = set()
         # User-confirmed non-same-actor sets (屏蔽列表)
@@ -163,15 +165,37 @@ class AliasResolver:
             return False
         return len(self._name_to_cluster_ids.get(norm, [])) == 1
 
+    def get_actor_aliases(self, actor_name: str) -> list[str]:
+        """Return all unambiguous display names/aliases belonging to the same performer cluster."""
+        norm = normalize_name(actor_name)
+        if not norm:
+            return []
+        cids = self._name_to_cluster_ids.get(norm, [])
+        if len(cids) != 1 or norm in self._homonym_names:
+            return [self._norm_to_display.get(norm, actor_name.strip())]
+        cluster = self._clusters[cids[0]]
+        result: list[str] = []
+        for n in sorted(cluster):
+            if n != norm and n in self._homonym_names:
+                continue
+            if self.is_disjoint_pair(norm, n):
+                continue
+            disp = self._norm_to_display.get(n, n)
+            if disp and disp not in result:
+                result.append(disp)
+        return result
+
     def register_performer_cluster(self, names: list[str], source: str = "") -> None:
         """Register one performer's collection of names/aliases without cross-cluster infection."""
         clean_names = set()
         for raw in names:
             if not raw:
                 continue
-            norm = normalize_name(raw)
+            raw_str = str(raw).strip()
+            norm = normalize_name(raw_str)
             if is_valid_alias(norm, _normalized=True):
                 clean_names.add(norm)
+                self._norm_to_display.setdefault(norm, raw_str)
 
         if len(clean_names) <= 1:
             return

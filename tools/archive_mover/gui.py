@@ -1418,6 +1418,7 @@ class ArchiveMoverWindow(QMainWindow):
         self._set_status("⏳ 正在执行归档移动…", running=True)
 
         mover = ArchiveMover(
+            alias_resolver=self.last_alias_resolver,
             dry_run=dry_run,
             clean_empty_dirs=self.chk_clean_empty.isChecked(),
         )
@@ -1970,20 +1971,150 @@ class ArchiveMoverWindow(QMainWindow):
             if self.txt_target.text().strip():
                 self._start_dup_scan(auto=True)
 
-    def _merge_duplicate_actor_dirs(self, group_data: dict, target_entry: dict, source_entries: list[dict]):
-        """将同名/别名演员的其他目录下的番号移动合并到选中的目标目录，并清理源空目录。
-        规则：
-        1. 若目标目录已存在同名番号目录，提醒用户查看同名目录，同时停止操作；
-        2. 若其上层分类目录也已空置，不需要把上层分类目录删除，只清理空的源演员目录。
+    def _get_merge_candidate_names(self, target_entry: dict, source_entries: list[dict]) -> list[tuple[str, str]]:
+        """收集当前重复演员组的所有可选演员名称（含当前目录名、待合并目录名、别名库名称）。"""
+        candidates: list[tuple[str, str]] = []
+        seen: set[str] = set()
+
+        def _add(name: str, label: str):
+            clean = name.strip()
+            if clean and clean not in seen:
+                seen.add(clean)
+                candidates.append((clean, label))
+
+        _add(target_entry["raw_name"], f"当前选中目录 ({target_entry['category']})")
+        for s in source_entries:
+            _add(s["raw_name"], f"待合并目录 ({s['category']})")
+
+        if self.last_alias_resolver is not None:
+            for base_name in [target_entry["raw_name"]] + [s["raw_name"] for s in source_entries]:
+                for al in self.last_alias_resolver.get_actor_aliases(base_name):
+                    _add(al, "演员别名库")
+
+        return candidates
+
+    def _prompt_merge_actor_name(
+        self,
+        canonical_name: str,
+        target_entry: dict,
+        source_entries: list[dict],
+        candidates: list[tuple[str, str]],
+    ) -> str | None:
+        """弹出合并确认与目标演员名称选择对话框，返回用户最终选择的演员名（取消则返回 None）。"""
+        dlg = QDialog(self)
+        dlg.setWindowTitle(f"合并演员目录并统一演员名 - {canonical_name}")
+        dlg.resize(620, 480)
+
+        layout = QVBoxLayout(dlg)
+        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setSpacing(10)
+
+        target_cat = target_entry["category"]
+        target_path = Path(target_entry["path"])
+
+        sources_info = []
+        for s in source_entries:
+            p = Path(s["path"])
+            count = len(list(p.iterdir())) if p.exists() else 0
+            sources_info.append(f"• 【{s['category']}】 {s['raw_name']} ({count} 个项目)  →  {p}")
+
+        info_lbl = QLabel(
+            f"<b>【目标保留分类】</b>：{target_cat} （目录位置：{target_path.parent}）<br>"
+            f"<b>【将被合并并清理的源目录】</b>（共 {len(source_entries)} 个）：<br>"
+            + "<br>".join(sources_info)
+            + "<br><br><b>请选择合并后统一使用的演员名称</b>（将同步修改目录名与目录下所有 NFO 的演员名）："
+        )
+        info_lbl.setWordWrap(True)
+        info_lbl.setStyleSheet(f"color: {TEXT_PRIMARY}; font-size: 12px; line-height: 1.4;")
+        layout.addWidget(info_lbl)
+
+        list_widget = QListWidget()
+        list_widget.setStyleSheet(
+            f"QListWidget {{ background-color: {BG_WIDGET}; border: 1px solid {BORDER}; border-radius: 6px; padding: 4px; color: {TEXT_PRIMARY}; font-size: 13px; }}"
+            f"QListWidget::item {{ padding: 6px 10px; border-radius: 4px; }}"
+            f"QListWidget::item:selected {{ background-color: {ACCENT_BLUE}; color: #ffffff; font-weight: bold; }}"
+        )
+        for idx, (name, src_label) in enumerate(candidates):
+            prefix = "★ " if idx == 0 else "   "
+            it = QListWidgetItem(f"{prefix}{name}    —    [{src_label}]")
+            it.setData(Qt.ItemDataRole.UserRole, name)
+            list_widget.addItem(it)
+        layout.addWidget(list_widget, 1)
+
+        edit_row = QHBoxLayout()
+        edit_lbl = QLabel("最终统一演员名：")
+        edit_lbl.setStyleSheet(f"color: {TEXT_SECONDARY}; font-size: 12px; font-weight: 600;")
+        txt_chosen = QLineEdit(target_entry["raw_name"])
+        txt_chosen.setFixedHeight(30)
+        edit_row.addWidget(edit_lbl)
+        edit_row.addWidget(txt_chosen, 1)
+        layout.addLayout(edit_row)
+
+        rule_tip = QLabel(
+            "💡 合并与 NFO 更新规则：\n"
+            "1. 将源目录下的番号子目录移入目标目录，并清理空的源演员目录（上层分类目录保留）；\n"
+            "2. 将合并后的演员目录改名为上方所选名称；\n"
+            "3. 自动更新该演员目录下所有 .nfo：将 <actor><name>（及同名 <set><name>）改为所选名称，"
+            "原艺名若不同则保留至 <role> 标签中；若 <tag> 含旧艺名则自动补充新名称 <tag>。"
+        )
+        rule_tip.setWordWrap(True)
+        rule_tip.setStyleSheet(f"color: {TEXT_DIM}; font-size: 11px;")
+        layout.addWidget(rule_tip)
+
+        def _on_item_changed(curr: QListWidgetItem | None, _prev: QListWidgetItem | None):
+            if curr:
+                val = curr.data(Qt.ItemDataRole.UserRole)
+                if val:
+                    txt_chosen.setText(str(val))
+
+        list_widget.currentItemChanged.connect(_on_item_changed)
+        if list_widget.count() > 0:
+            list_widget.setCurrentRow(0)
+
+        btn_bar = QHBoxLayout()
+        btn_bar.addStretch()
+        btn_ok = QPushButton("✅ 确认合并并更新 NFO")
+        btn_ok.setFixedHeight(32)
+        btn_ok.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_ok.setStyleSheet(
+            f"QPushButton {{ background-color: {BTN_EXEC_BG}; color: #fff; border: none; border-radius: 6px; padding: 0 18px; font-weight: 700; font-size: 12px; }}"
+            f"QPushButton:hover {{ background-color: {BTN_EXEC_HOVER}; }}"
+        )
+        btn_cancel = QPushButton("取消")
+        btn_cancel.setFixedHeight(32)
+        btn_cancel.setFixedWidth(80)
+        btn_cancel.setCursor(Qt.CursorShape.PointingHandCursor)
+
+        btn_ok.clicked.connect(dlg.accept)
+        btn_cancel.clicked.connect(dlg.reject)
+        btn_bar.addWidget(btn_ok)
+        btn_bar.addWidget(btn_cancel)
+        layout.addLayout(btn_bar)
+
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return None
+        chosen = txt_chosen.text().strip()
+        return chosen or target_entry["raw_name"]
+
+    def _merge_duplicate_actor_dirs(
+        self,
+        group_data: dict,
+        target_entry: dict,
+        source_entries: list[dict],
+        *,
+        chosen_actor_name: str | None = None,
+    ):
+        """将同名/别名演员的其他目录下的番号移动合并到选中的目标目录，清理源空目录，
+        并根据用户选择的演员名称统一修改目标演员目录名与目录下所有 NFO 文件的演员信息。
         """
         canonical_name = group_data.get("canonical_name", "该演员")
         target_path = Path(target_entry["path"])
-        target_cat = target_entry["category"]
 
         if not target_path.exists():
             QMessageBox.warning(self, "错误", f"目标保留目录不存在:\n{target_path}")
             return
 
+        from .nfo_updater import update_nfos_in_directory
         from .scanner import IGNORED_NAMES
 
         # ── 1. 冲突预检：检查目标目录是否存在同名番号 ───────────────────
@@ -2037,42 +2168,20 @@ class ArchiveMoverWindow(QMainWindow):
             )
             return
 
-        # ── 2. 无冲突时弹出确认提示 ─────────────────────────────────────
-        sources_info = []
-        for s in source_entries:
-            p = Path(s["path"])
-            count = len(list(p.iterdir())) if p.exists() else 0
-            sources_info.append(f"• 【{s['category']}】 {s['raw_name']} ({count} 个项目)\n  路径: {p}")
+        # ── 2. 收集可选演员名列表并弹出选择确认对话框 ─────────────────────
+        candidates = self._get_merge_candidate_names(target_entry, source_entries)
+        interactive = chosen_actor_name is None
+        if chosen_actor_name is None:
+            chosen_actor_name = self._prompt_merge_actor_name(canonical_name, target_entry, source_entries, candidates)
+            if not chosen_actor_name:
+                return
 
-        sources_text = "\n".join(sources_info)
-        confirm_msg = (
-            f"确定要执行演员目录合并吗？\n\n"
-            f"【目标保留目录】:\n"
-            f"• 【{target_cat}】 {target_entry['raw_name']}\n"
-            f"  路径: {target_path}\n\n"
-            f"【将被合并并清理的源目录】 ({len(source_entries)} 个):\n"
-            f"{sources_text}\n\n"
-            f"【合并规则】:\n"
-            f"1. 经预检，未发现同名冲突番号；\n"
-            f"2. 将源目录下的所有番号子目录移动到目标保留目录下；\n"
-            f"3. 移动完成后，仅清理/删除源端的空演员目录（上层分类目录始终保留）。\n\n"
-            f"确认立即执行合并吗？"
-        )
-
-        ret = QMessageBox.question(
-            self,
-            f"确认合并演员目录 - {canonical_name}",
-            confirm_msg,
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
-        )
-        if ret != QMessageBox.StandardButton.Yes:
-            return
-
+        chosen_actor_name = chosen_actor_name.strip()
         moved_codes = 0
         cleaned_dirs = 0
         errors = []
 
+        # ── 3. 移动源目录下的番号子目录并清理空的源演员目录 ───────────────
         for s in source_entries:
             src_p = Path(s["path"])
             if not src_p.exists():
@@ -2102,26 +2211,65 @@ class ArchiveMoverWindow(QMainWindow):
             except Exception as e:
                 errors.append(f"处理目录 {src_p.name} 时出错: {e}")
 
-        if errors:
-            err_text = "\n".join(errors[:5])
-            QMessageBox.warning(
-                self,
-                "合并完成 (存在部分警告)",
-                f"已移动 {moved_codes} 个番号目录，清理了 {cleaned_dirs} 个源目录。\n\n部分目录处理出错:\n{err_text}",
-            )
-        else:
-            QMessageBox.information(
-                self,
-                "合并成功",
-                f"✅ 演员「{canonical_name}」合并完成！\n\n"
-                f"• 共移动 {moved_codes} 个番号目录至目标保留目录\n"
-                f"• 成功清理 {cleaned_dirs} 个空的源演员目录（分类目录已完整保留）",
-            )
+        # ── 4. 将目标演员目录重命名为所选的统一演员名 ─────────────────────
+        final_target_path = target_path.parent / chosen_actor_name
+        if final_target_path != target_path:
+            try:
+                if not final_target_path.exists():
+                    target_path.rename(final_target_path)
+                else:
+                    # 若同分类下目标名称目录仍存在，将当前目录内容移入并清理空目录
+                    for child in list(target_path.iterdir()):
+                        dest = final_target_path / child.name
+                        if not dest.exists():
+                            shutil.move(str(child), str(dest))
+                    rem = [f for f in target_path.iterdir() if f.name.lower() not in IGNORED_NAMES]
+                    if not rem:
+                        shutil.rmtree(str(target_path), ignore_errors=True)
+            except Exception as e:
+                errors.append(f"重命名目录为 {chosen_actor_name} 时出错: {e}")
+                final_target_path = target_path
 
-        self._set_status(f"✅ 演员「{canonical_name}」目录合并完成，共移动 {moved_codes} 个项目", ok=True)
+        # ── 5. 同步更新合并后目录下所有 NFO 的演员名、<role>、<set> 与 <tag> ──
+        old_actor_names: set[str] = {
+            target_entry["raw_name"],
+            *(s["raw_name"] for s in source_entries),
+            *(name for name, _ in candidates),
+        }
+        updated_nfos = 0
+        try:
+            updated_nfos = update_nfos_in_directory(final_target_path, chosen_actor_name, old_actor_names)
+        except Exception as e:
+            errors.append(f"更新 NFO 演员名称时出错: {e}")
+
+        if interactive:
+            if errors:
+                err_text = "\n".join(errors[:5])
+                QMessageBox.warning(
+                    self,
+                    "合并完成 (存在部分警告)",
+                    f"已移动 {moved_codes} 个番号目录，清理了 {cleaned_dirs} 个源目录，"
+                    f"更新了 {updated_nfos} 个 NFO 文件。\n\n部分处理出错:\n{err_text}",
+                )
+            else:
+                QMessageBox.information(
+                    self,
+                    "合并成功",
+                    f"✅ 演员目录合并完成（统一名称：「{chosen_actor_name}」）！\n\n"
+                    f"• 最终演员目录: {final_target_path}\n"
+                    f"• 共移动 {moved_codes} 个番号目录\n"
+                    f"• 同步更新 {updated_nfos} 个 NFO 文件的演员名与曾用名 <role>/<tag>\n"
+                    f"• 成功清理 {cleaned_dirs} 个空的源演员目录（分类目录已完整保留）",
+                )
+
+        self._set_status(
+            f"✅ 演员「{chosen_actor_name}」合并完成：移动 {moved_codes} 个项目，更新 {updated_nfos} 个 NFO",
+            ok=True,
+        )
 
         # 自动重新扫描刷新重复演员列表
-        self._start_dup_scan(auto=True)
+        if interactive:
+            self._start_dup_scan(auto=True)
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────

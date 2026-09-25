@@ -11,6 +11,7 @@ from pathlib import Path
 
 from .alias_resolver import AliasResolver
 from .models import MoveItem, MoveStatus, ProcessReport
+from .nfo_updater import update_nfos_in_directory
 from .scanner import IGNORED_NAMES, ArchiveScanner, TargetIndex
 
 logger = logging.getLogger(__name__)
@@ -169,9 +170,23 @@ class ArchiveMover:
                 item.status = MoveStatus.MOVED
                 moved_actors.add(item.source_actor)
 
-                # Update target index in memory
+                # Update target index in memory and synchronize NFO actor names if alias matched
                 if item.target_actor:
                     target_index.add_existing_code(item.target_actor, item.source_code)
+                    import re as _re
+
+                    old_candidates: set[str] = set()
+                    if item.match_type in ("primary_actor", "primary_actor_alias"):
+                        parts = [p.strip() for p in _re.split(r"[,，、/|]+", item.source_actor) if p.strip()]
+                        if parts:
+                            old_candidates.add(parts[0])
+                    else:
+                        old_candidates.add(item.source_actor)
+                    if self.alias_resolver:
+                        old_candidates.update(self.alias_resolver.get_actor_aliases(item.target_actor))
+                        for c in list(old_candidates):
+                            old_candidates.update(self.alias_resolver.get_actor_aliases(c))
+                    update_nfos_in_directory(dest_path, item.target_actor, old_candidates)
 
             except Exception as e:
                 logger.error("Failed to move %s -> %s: %s", item.source_path, item.target_code_path, e)

@@ -602,3 +602,135 @@ def test_copy_dup_false_positive_info_to_clipboard(monkeypatch):
         assert str(actor1 / "C0930-hitozuma0855") in copied_text
         assert str(actor2 / "GACHI-963") in copied_text
         assert QApplication.clipboard().text() == copied_text
+
+
+def test_nfo_updater_and_merge_move_nfo_sync(monkeypatch):
+    from PyQt6.QtWidgets import QApplication
+
+    from tools.archive_mover.gui import ArchiveMoverWindow
+    from tools.archive_mover.nfo_updater import update_nfo_file
+
+    _app = QApplication.instance() or QApplication(["-platform", "offscreen"])
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        root = Path(tmp_dir)
+        cfg_file = root / "config.json"
+        monkeypatch.setattr("tools.archive_mover.gui._get_config_path", lambda: cfg_file)
+        monkeypatch.setattr("tools.archive_mover.gui.test_stash_connection", lambda u, k: (True, "OK"))
+
+        # ── Part 1: Direct unit test of update_nfo_file ──────────────────────
+        sample_nfo = root / "sample.nfo"
+        sample_nfo.write_text(
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+            "<movie>\n"
+            "  <plot><![CDATA[原始剧情内容保留不变]]></plot>\n"
+            "  <num>ABC-001</num>\n"
+            "  <actor>\n"
+            "    <name>白石小百合</name>\n"
+            "    <type>Actor</type>\n"
+            "  </actor>\n"
+            "  <actor>\n"
+            "    <name>共演演员A</name>\n"
+            "    <type>Actor</type>\n"
+            "  </actor>\n"
+            "  <set>\n"
+            "    <name>白石小百合</name>\n"
+            "  </set>\n"
+            "  <tag>熟女</tag>\n"
+            "  <tag>白石小百合</tag>\n"
+            "</movie>\n",
+            encoding="utf-8",
+        )
+
+        modified = update_nfo_file(sample_nfo, "北条麻妃", {"白石小百合", "北条麻妃"})
+        assert modified is True
+        nfo_text = sample_nfo.read_text(encoding="utf-8")
+        assert "<name>北条麻妃</name>" in nfo_text
+        assert "<role>白石小百合</role>" in nfo_text
+        assert "<name>共演演员A</name>" in nfo_text
+        assert "<set>\n    <name>北条麻妃</name>\n  </set>" in nfo_text
+        assert "<tag>白石小百合</tag>" in nfo_text
+        assert "<tag>北条麻妃</tag>" in nfo_text
+        assert "<![CDATA[原始剧情内容保留不变]]>" in nfo_text
+
+        # Second call is idempotent (no further changes)
+        assert update_nfo_file(sample_nfo, "北条麻妃", {"白石小百合", "北条麻妃"}) is False
+
+        # ── Part 2: Trigger 2 (ArchiveMover.execute_moves auto-updates NFO) ──
+        resolver = AliasResolver()
+        resolver.register_performer_cluster(["北条麻妃", "白石小百合", "Maki Hojo"], source="excel")
+        resolver.consolidate_clusters()
+
+        src_dir = root / "source"
+        tgt_dir = root / "target"
+        (src_dir / "白石小百合" / "MOV-101").mkdir(parents=True)
+        (src_dir / "白石小百合" / "MOV-101" / "MOV-101.mp4").touch()
+        (src_dir / "白石小百合" / "MOV-101" / "MOV-101.nfo").write_text(
+            "<movie>\n  <actor>\n    <name>白石小百合</name>\n  </actor>\n  <tag>白石小百合</tag>\n</movie>\n",
+            encoding="utf-8",
+        )
+        (tgt_dir / "熟女" / "北条麻妃" / "MOV-100").mkdir(parents=True)
+        (tgt_dir / "熟女" / "北条麻妃" / "MOV-100" / "MOV-100.mp4").touch()
+
+        mover = ArchiveMover(alias_resolver=resolver, dry_run=False, clean_empty_dirs=True)
+        report, t_index = mover.evaluate_plan(src_dir, tgt_dir)
+        mover.execute_moves(report, t_index)
+
+        moved_nfo = tgt_dir / "熟女" / "北条麻妃" / "MOV-101" / "MOV-101.nfo"
+        assert moved_nfo.exists()
+        moved_nfo_text = moved_nfo.read_text(encoding="utf-8")
+        assert "<name>北条麻妃</name>" in moved_nfo_text
+        assert "<role>白石小百合</role>" in moved_nfo_text
+        assert "<tag>北条麻妃</tag>" in moved_nfo_text
+
+        # ── Part 3: Trigger 1 (_merge_duplicate_actor_dirs with chosen name) ──
+        dup_cat1 = tgt_dir / "熟女" / "白石小百合"
+        (dup_cat1 / "MOV-201").mkdir(parents=True)
+        (dup_cat1 / "MOV-201" / "MOV-201.mp4").touch()
+        (dup_cat1 / "MOV-201" / "MOV-201.nfo").write_text(
+            "<movie>\n  <actor>\n    <name>白石小百合</name>\n  </actor>\n  <tag>白石小百合</tag>\n</movie>\n",
+            encoding="utf-8",
+        )
+
+        dup_cat2 = tgt_dir / "人妻" / "北条麻妃"
+        (dup_cat2 / "MOV-202").mkdir(parents=True)
+        (dup_cat2 / "MOV-202" / "MOV-202.mp4").touch()
+        (dup_cat2 / "MOV-202" / "MOV-202.nfo").write_text(
+            "<movie>\n  <actor>\n    <name>北条麻妃</name>\n  </actor>\n</movie>\n",
+            encoding="utf-8",
+        )
+
+        win = ArchiveMoverWindow()
+        win.last_alias_resolver = resolver
+        target_entry = {"raw_name": "白石小百合", "category": "熟女", "path": str(dup_cat1)}
+        source_entries = [{"raw_name": "北条麻妃", "category": "人妻", "path": str(dup_cat2)}]
+        group_data = {
+            "canonical_name": "北条麻妃",
+            "diag": "⚠️ 别名跨分类重复",
+            "entries": [target_entry, *source_entries],
+        }
+
+        # Verify candidate names include directory names and alias database names
+        cands = [name for name, _ in win._get_merge_candidate_names(target_entry, source_entries)]
+        assert "白石小百合" in cands
+        assert "北条麻妃" in cands
+        assert "Maki Hojo" in cands
+
+        # Merge into '熟女' and choose '北条麻妃' as the unified actor name
+        win._merge_duplicate_actor_dirs(
+            group_data,
+            target_entry,
+            source_entries,
+            chosen_actor_name="北条麻妃",
+        )
+
+        # Verify directory was renamed to '熟女/北条麻妃', source cleaned, and NFO updated
+        final_dir = tgt_dir / "熟女" / "北条麻妃"
+        assert final_dir.exists()
+        assert not dup_cat1.exists()
+        assert not dup_cat2.exists()
+
+        merged_nfo_201 = (final_dir / "MOV-201" / "MOV-201.nfo").read_text(encoding="utf-8")
+        assert "<name>北条麻妃</name>" in merged_nfo_201
+        assert "<role>白石小百合</role>" in merged_nfo_201
+        assert "<tag>北条麻妃</tag>" in merged_nfo_201
