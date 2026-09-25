@@ -408,16 +408,38 @@ class EvaluationWorker(QThread):
         source_path: str,
         target_path: str,
         exclude_dirs: list[str] | None = None,
+        db_path: str = "",
+        stash_sources: list[tuple[str, str]] | None = None,
+        ignored_dup_groups: list[dict] | None = None,
     ):
         super().__init__()
         self.mover = mover
         self.source_path = source_path
         self.target_path = target_path
         self.exclude_dirs = exclude_dirs
+        self.db_path = db_path
+        self.stash_sources = stash_sources or []
+        self.ignored_dup_groups = ignored_dup_groups or []
         self.signals = WorkerSignals()
 
     def run(self):
         try:
+            resolver = self.mover.alias_resolver
+            if resolver is None or not resolver._clusters:
+                resolver = AliasResolver(
+                    excel_path=self.db_path if self.db_path and Path(self.db_path).exists() else None,
+                    disjoint_groups=self.ignored_dup_groups,
+                )
+                if self.db_path and Path(self.db_path).exists():
+                    self.signals.progress.emit(5, 100, "⏳ 正在读取 Excel 演员别名库…")
+                    resolver.load_excel()
+                for idx, (s_url, s_key) in enumerate(self.stash_sources, start=1):
+                    self.signals.progress.emit(8 + idx * 4, 100, f"⏳ 正在读取 Stash 源 {idx} 演员别名库…")
+                    resolver.load_stash(s_url, s_key)
+                self.signals.progress.emit(18, 100, "⏳ 正在合并去重多源演员别名…")
+                resolver.consolidate_clusters()
+                self.mover.alias_resolver = resolver
+
             report, target_index = self.mover.evaluate_plan(
                 self.source_path,
                 self.target_path,
@@ -1339,35 +1361,28 @@ class ArchiveMoverWindow(QMainWindow):
             return
 
         self.btn_scan.setEnabled(False)
+        self.btn_scan.setText("⏳ 扫描评估中...")
         self.btn_execute.setEnabled(False)
         self.btn_open_report.setEnabled(False)
+        self.progress_bar.setRange(0, 0)
         self.progress_bar.setVisible(True)
-        self.progress_bar.setValue(0)
-        self._set_status("正在加载别名库并预扫描目标目录结构…")
-
-        alias_resolver = AliasResolver(
-            excel_path=db_path if Path(db_path).exists() else None,
-            disjoint_groups=self.ignored_dup_groups,
-        )
-        if Path(db_path).exists():
-            alias_resolver.load_excel()
-
-        # 加载所有启用的 Stash 源 (源 1 + 源 2)
-        for s_url, s_key in self._get_enabled_stash_sources():
-            alias_resolver.load_stash(s_url, s_key)
-
-        # 连通合并去重 Excel 与多个 Stash 源的全部演员别名
-        alias_resolver.consolidate_clusters()
-
-        self.last_alias_resolver = alias_resolver  # keep for dup scan
+        self._set_status("⏳ 正在加载别名库并扫描目标目录结构…", running=True)
 
         mover = ArchiveMover(
-            alias_resolver=alias_resolver,
+            alias_resolver=None,
             dry_run=self.chk_dry_run.isChecked(),
             clean_empty_dirs=self.chk_clean_empty.isChecked(),
         )
 
-        self.eval_worker = EvaluationWorker(mover, source, target, exclude_dirs=self._parse_exclude_dirs())
+        self.eval_worker = EvaluationWorker(
+            mover,
+            source,
+            target,
+            exclude_dirs=self._parse_exclude_dirs(),
+            db_path=db_path,
+            stash_sources=self._get_enabled_stash_sources(),
+            ignored_dup_groups=self.ignored_dup_groups,
+        )
         self.eval_worker.signals.progress.connect(self._on_progress)
         self.eval_worker.signals.finished.connect(self._on_evaluation_finished)
         self.eval_worker.signals.error.connect(self._on_worker_error)
@@ -1396,8 +1411,11 @@ class ArchiveMoverWindow(QMainWindow):
 
         self.btn_scan.setEnabled(False)
         self.btn_execute.setEnabled(False)
+        self.btn_execute.setText("⏳ 移动中...")
+        self.progress_bar.setRange(0, 100)
         self.progress_bar.setVisible(True)
         self.progress_bar.setValue(0)
+        self._set_status("⏳ 正在执行归档移动…", running=True)
 
         mover = ArchiveMover(
             dry_run=dry_run,
@@ -1411,14 +1429,20 @@ class ArchiveMoverWindow(QMainWindow):
 
     @pyqtSlot(int, int, str)
     def _on_progress(self, pct: int, _total: int, msg: str):
+        if self.progress_bar.maximum() == 0:
+            self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(pct)
-        self._set_status(msg)
+        self._set_status(msg, running=True)
 
     @pyqtSlot(object, object)
     def _on_evaluation_finished(self, report: ProcessReport, target_index: TargetIndex):
         self.last_report = report
         self.last_target_index = target_index
+        if hasattr(self, "eval_worker") and self.eval_worker.mover.alias_resolver is not None:
+            self.last_alias_resolver = self.eval_worker.mover.alias_resolver
+        self.btn_scan.setText("扫描评估")
         self.btn_scan.setEnabled(True)
+        self.progress_bar.setRange(0, 100)
         self.progress_bar.setVisible(False)
 
         report_dir = Path(__file__).resolve().parents[2] / "reports"
@@ -1447,8 +1471,11 @@ class ArchiveMoverWindow(QMainWindow):
     @pyqtSlot(object, object)
     def _on_execution_finished(self, report: ProcessReport, _target_index: TargetIndex):
         self.last_report = report
+        self.btn_scan.setText("扫描评估")
         self.btn_scan.setEnabled(True)
+        self.btn_execute.setText("执行移动")
         self.btn_execute.setEnabled(False)
+        self.progress_bar.setRange(0, 100)
         self.progress_bar.setVisible(False)
 
         report_dir = Path(__file__).resolve().parents[2] / "reports"
@@ -1468,17 +1495,22 @@ class ArchiveMoverWindow(QMainWindow):
 
     @pyqtSlot(str)
     def _on_worker_error(self, err_msg: str):
+        self.btn_scan.setText("扫描评估")
         self.btn_scan.setEnabled(True)
+        self.btn_execute.setText("执行移动")
         self.btn_execute.setEnabled(True)
+        self.progress_bar.setRange(0, 100)
         self.progress_bar.setVisible(False)
         self._set_status(f"❌  发生错误: {err_msg}", error=True)
         QMessageBox.critical(self, "错误", f"操作失败:\n{err_msg}")
 
-    def _set_status(self, msg: str, *, ok: bool = False, error: bool = False):
+    def _set_status(self, msg: str, *, ok: bool = False, error: bool = False, running: bool = False):
         if error:
             color = ACCENT_RED
         elif ok:
             color = ACCENT_GREEN
+        elif running:
+            color = ACCENT_BLUE
         else:
             color = TEXT_DIM
         self.lbl_status.setStyleSheet(f"color: {color}; font-size: 12px; padding: 1px 0;")
@@ -1562,8 +1594,9 @@ class ArchiveMoverWindow(QMainWindow):
             return
 
         self.btn_scan_dup.setEnabled(False)
-        self.lbl_dup_status.setStyleSheet(f"color: {TEXT_DIM}; font-size: 12px;")
-        self.lbl_dup_status.setText("正在扫描归档库并比对演员别名库，检测重复建档…")
+        self.btn_scan_dup.setText("⏳ 扫描中...")
+        self.lbl_dup_status.setStyleSheet(f"color: {ACCENT_BLUE}; font-size: 12px;")
+        self.lbl_dup_status.setText("⏳ 正在扫描归档库并比对演员别名库，检测重复建档…")
         self.dup_table.setRowCount(0)
         self.main_tabs.setTabText(1, "重复演员目录 (扫描中…)")
 
@@ -1584,6 +1617,7 @@ class ArchiveMoverWindow(QMainWindow):
 
     @pyqtSlot(list, object)
     def _on_dup_finished(self, duplicates: list, resolver: object):
+        self.btn_scan_dup.setText("扫描重复演员目录")
         self.btn_scan_dup.setEnabled(True)
         if resolver:
             self.last_alias_resolver = resolver
@@ -1665,6 +1699,7 @@ class ArchiveMoverWindow(QMainWindow):
 
     @pyqtSlot(str)
     def _on_dup_error(self, err_msg: str):
+        self.btn_scan_dup.setText("扫描重复演员目录")
         self.btn_scan_dup.setEnabled(True)
         self.main_tabs.setTabText(1, "重复演员目录 (错误)")
         self.lbl_dup_status.setStyleSheet(f"color: {ACCENT_RED}; font-size: 12px;")

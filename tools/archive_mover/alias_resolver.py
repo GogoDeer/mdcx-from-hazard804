@@ -18,17 +18,21 @@ from .models import TargetActorInfo
 logger = logging.getLogger(__name__)
 
 
+_WS_RE = re.compile(r"[\s\u3000\u200b]+")
+_KANJI_RE = re.compile(r"[\u4e00-\u9fff]")
+_EXCEL_CLUSTER_CACHE: dict[tuple[str, float], list[list[str]]] = {}
+
+
 def normalize_name(name: str) -> str:
     """Normalize actor name by removing whitespace, full-width spaces, and punctuation."""
     if not name:
         return ""
-    clean = re.sub(r"[\s\u3000\u200b]+", "", str(name))
-    return clean.strip().lower()
+    return _WS_RE.sub("", str(name)).lower()
 
 
-def is_valid_alias(alias: str) -> bool:
+def is_valid_alias(alias: str, *, _normalized: bool = False) -> bool:
     """Filter out noisy, ultra-short, or overly generic nicknames that cause false matches."""
-    clean = normalize_name(alias)
+    clean = alias if _normalized else normalize_name(alias)
     if not clean:
         return False
     # If pure ASCII / English, require at least 3 characters (avoid 2-char initials like 'ai', 're')
@@ -144,6 +148,8 @@ class AliasResolver:
 
     def is_disjoint_pair(self, name_a: str, name_b: str) -> bool:
         """Return True if user explicitly marked name_a and name_b as different actors."""
+        if not self._disjoint_groups:
+            return False
         na = normalize_name(name_a)
         nb = normalize_name(name_b)
         if not na or not nb or na == nb:
@@ -163,11 +169,8 @@ class AliasResolver:
         for raw in names:
             if not raw:
                 continue
-            raw_str = str(raw).strip()
-            if not raw_str:
-                continue
-            norm = normalize_name(raw_str)
-            if is_valid_alias(norm):
+            norm = normalize_name(raw)
+            if is_valid_alias(norm, _normalized=True):
                 clean_names.add(norm)
 
         if len(clean_names) <= 1:
@@ -187,11 +190,20 @@ class AliasResolver:
             return 0
 
         try:
+            cache_key = (str(target_path.resolve()), target_path.stat().st_mtime)
+            cached_clusters = _EXCEL_CLUSTER_CACHE.get(cache_key)
+            if cached_clusters is not None:
+                for cluster in cached_clusters:
+                    self.register_performer_cluster(cluster, source="excel")
+                self.loaded_excel_count = len(cached_clusters)
+                logger.info("Loaded %d actor records from Excel memory cache: %s", len(cached_clusters), target_path)
+                return len(cached_clusters)
+
             import openpyxl
 
             wb = openpyxl.load_workbook(target_path, read_only=True)
             sheet = wb.active
-            count = 0
+            parsed_clusters: list[list[str]] = []
             for row in sheet.iter_rows(values_only=True):
                 if not row or not any(row[:4]):
                     continue
@@ -210,13 +222,14 @@ class AliasResolver:
                             cluster.append(al.strip())
 
                 if cluster:
+                    parsed_clusters.append(cluster)
                     self.register_performer_cluster(cluster, source="excel")
-                    count += 1
 
             wb.close()
-            self.loaded_excel_count = count
-            logger.info("Loaded %d actor records from Excel: %s", count, target_path)
-            return count
+            _EXCEL_CLUSTER_CACHE[cache_key] = parsed_clusters
+            self.loaded_excel_count = len(parsed_clusters)
+            logger.info("Loaded %d actor records from Excel: %s", len(parsed_clusters), target_path)
+            return len(parsed_clusters)
         except Exception as e:
             logger.error("Failed to load Excel actor database: %s", e)
             return 0
@@ -252,7 +265,14 @@ class AliasResolver:
             name for name, src_map in name_source_counts.items() if any(cnt > 1 for cnt in src_map.values())
         }
 
-        cluster_has_kanji = [any(re.search(r"[\u4e00-\u9fff]", x) for x in c) for c in clusters]
+        kanji_cache: dict[int, bool] = {}
+
+        def _has_kanji(cid: int) -> bool:
+            res = kanji_cache.get(cid)
+            if res is None:
+                res = any(_KANJI_RE.search(x) for x in clusters[cid])
+                kanji_cache[cid] = res
+            return res
 
         def is_safe_bridge_name(name: str) -> bool:
             if name in homonyms:
@@ -269,6 +289,7 @@ class AliasResolver:
 
         # 2. Build cluster-level adjacency graph: two clusters connect IF they share a safe bridge name
         cluster_adj: dict[int, set[int]] = defaultdict(set)
+        disjoint_groups = self._disjoint_groups
         for name, cids in name_to_cids.items():
             if len(cids) > 1 and is_safe_bridge_name(name):
                 c_list = list(cids)
@@ -279,12 +300,15 @@ class AliasResolver:
                         if cluster_sources[ci] and cluster_sources[ci] == cluster_sources[cj]:
                             continue
                         # Prevent Romaji homophone collision (e.g. 'Miho Uehara': '上原美帆' vs '上原美穂')
-                        if name.isascii() and cluster_has_kanji[ci] and cluster_has_kanji[cj]:
+                        if name.isascii() and _has_kanji(ci) and _has_kanji(cj):
                             if not any(not x.isascii() for x in (clusters[ci] & clusters[cj])):
                                 continue
-                        # Respect user-configured disjoint groups
-                        if self._disjoint_groups and any(
-                            self.is_disjoint_pair(a, b) for a in clusters[ci] for b in clusters[cj]
+                        # Respect user-configured disjoint groups via fast set intersection
+                        if disjoint_groups and any(
+                            bool(clusters[ci] & g)
+                            and bool(clusters[cj] & g)
+                            and len((clusters[ci] | clusters[cj]) & g) >= 2
+                            for g in disjoint_groups
                         ):
                             continue
                         cluster_adj[ci].add(cj)
