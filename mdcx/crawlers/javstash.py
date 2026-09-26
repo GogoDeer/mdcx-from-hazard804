@@ -265,13 +265,23 @@ class StashGraphQLCrawler(BaseStashBoxCrawler):
             return None
 
         file_str = str(ctx.input.file_path)
-        from ..utils.phash import get_cached_scene, set_cached_scene
+        source_key = self.site().value
+        from ..utils.phash import (
+            get_cached_scene,
+            is_fingerprint_checked,
+            mark_fingerprint_checked,
+            set_cached_scene,
+        )
 
-        cached_scene = get_cached_scene(file_str)
+        cached_scene = get_cached_scene(file_str, source=source_key)
         if cached_scene:
             ctx.debug(f"复用预查缓存匹配到场景: {cached_scene.get('title')}")
             LogBuffer.log().write(f"\n 💡 [JavStash] 命中预查指纹缓存: {cached_scene.get('title')}")
             return cached_scene
+
+        if is_fingerprint_checked(file_str, source_key):
+            ctx.debug("[JavStash] 前置阶段已完成指纹检索且未命中，跳过重复指纹查询")
+            return None
 
         fingerprints_query: list[list[dict[str, str]]] = []
         fp_labels: list[str] = []
@@ -309,6 +319,7 @@ class StashGraphQLCrawler(BaseStashBoxCrawler):
                 {"fingerprints": fingerprints_query},
                 operation="指纹检索",
             )
+            mark_fingerprint_checked(file_str, source_key)
             scenes_nested = data.get("findScenesBySceneFingerprints", [])
             if scenes_nested and isinstance(scenes_nested, list):
                 for idx, scene_matches in enumerate(scenes_nested):
@@ -320,7 +331,7 @@ class StashGraphQLCrawler(BaseStashBoxCrawler):
                             file_str,
                         )
                         scene = best or scene_matches[0]
-                        set_cached_scene(file_str, scene)
+                        set_cached_scene(file_str, scene, source=source_key)
                         label = fp_labels[idx] if idx < len(fp_labels) else "HASH"
                         ctx.debug(f"通过 {label} 匹配到场景: {scene.get('title')}")
                         LogBuffer.log().write(f"\n 💡 [JavStash] 视频指纹({label})命中场景: {scene.get('title')}")

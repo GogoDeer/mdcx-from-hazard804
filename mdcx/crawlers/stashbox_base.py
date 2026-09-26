@@ -16,7 +16,14 @@ from mdcx.models.model_types import CrawlerResult
 
 from ..models.log_buffer import LogBuffer
 from ..utils.javstash_utils import STASH_HEADERS
-from ..utils.phash import compute_video_phash, get_cached_scene, set_cached_scene
+from ..utils.phash import (
+    compute_video_phash,
+    extract_scene_number,
+    get_cached_scene,
+    is_fingerprint_checked,
+    mark_fingerprint_checked,
+    set_cached_scene,
+)
 from .base import BaseCrawler, Context, CrawlerData, CrawlerException
 
 if TYPE_CHECKING:
@@ -147,13 +154,18 @@ class BaseStashBoxCrawler(BaseCrawler):
 
         file_str = str(ctx.input.file_path)
         name = self.get_display_name()
+        source_key = self.site().value
 
         # Check in-memory cache first
-        cached_scene = get_cached_scene(file_str)
+        cached_scene = get_cached_scene(file_str, source=source_key)
         if cached_scene:
             ctx.debug(f"复用预查指纹缓存匹配到场景: {cached_scene.get('title')}")
             LogBuffer.log().write(f"\n 💡 [{name}] 命中指纹缓存: {cached_scene.get('title')}")
             return cached_scene
+
+        if is_fingerprint_checked(file_str, source_key):
+            ctx.debug(f"[{name}] 前置阶段已完成指纹检索且未命中，跳过重复指纹查询")
+            return None
 
         fingerprints_query: list[list[dict[str, str]]] = []
         fp_labels: list[str] = []
@@ -191,6 +203,7 @@ class BaseStashBoxCrawler(BaseCrawler):
                 {"fingerprints": fingerprints_query},
                 operation="指纹检索",
             )
+            mark_fingerprint_checked(file_str, source_key)
             scenes_nested = data.get("findScenesBySceneFingerprints", [])
             if not isinstance(scenes_nested, list) or not scenes_nested:
                 return None
@@ -198,7 +211,7 @@ class BaseStashBoxCrawler(BaseCrawler):
             # Priority 1: Check PHASH match first if present
             if phash_idx is not None and len(scenes_nested) > phash_idx and scenes_nested[phash_idx]:
                 scene = scenes_nested[phash_idx][0]
-                set_cached_scene(file_str, scene)
+                set_cached_scene(file_str, scene, source=source_key)
                 ctx.debug(f"通过 PHASH 匹配到场景: {scene.get('title')}")
                 LogBuffer.log().write(f"\n 💡 [{name}] 视频指纹(PHASH)命中场景: {scene.get('title')}")
                 return scene
@@ -207,7 +220,7 @@ class BaseStashBoxCrawler(BaseCrawler):
             for idx, scene_matches in enumerate(scenes_nested):
                 if scene_matches:
                     scene = scene_matches[0]
-                    set_cached_scene(file_str, scene)
+                    set_cached_scene(file_str, scene, source=source_key)
                     label = fp_labels[idx] if idx < len(fp_labels) else "HASH"
                     ctx.debug(f"通过 {label} 匹配到场景: {scene.get('title')}")
                     LogBuffer.log().write(f"\n 💡 [{name}] 视频指纹({label})命中场景: {scene.get('title')}")
@@ -245,7 +258,7 @@ class BaseStashBoxCrawler(BaseCrawler):
         images = scene.get("images", [])
         screenshot = images[0].get("url", "") if images else ""
 
-        number = scene.get("code") or scene.get("title") or ctx.input.number
+        number = extract_scene_number(scene) or ctx.input.number
 
         return CrawlerData(
             title=title,

@@ -138,7 +138,7 @@ async def test_run_with_fingerprint_hit(mock_client, sample_stashdb_scene, monke
     res = await crawler._run(ctx)
     assert isinstance(res, CrawlerResult)
     assert res.external_id == "3622e809-c43c-4446-a186-ad757f3faea2"
-    assert res.number == "We're Betting It's Half Black"
+    assert res.number == "PrivateSociety.22.12.20"
     crawler._post_graphql.assert_called_once()
 
 

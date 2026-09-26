@@ -13,6 +13,7 @@ Compatible with Stash-box / goimagehash (Lee 1984 DCT-II perceptual hash):
 from __future__ import annotations
 
 import logging
+import re
 import time
 from pathlib import Path
 
@@ -157,27 +158,99 @@ def compute_video_phash(video_path: str | Path) -> str | None:
 
 # Module-level scene cache: file_path -> scene dict
 _PHASH_SCENE_CACHE: dict[str, dict] = {}
+# Optional source endpoint tag per cached file_path (e.g. 'javstash', 'stashdb', or '' for wildcard)
+_PHASH_SCENE_SOURCE_CACHE: dict[str, str] = {}
+# Track endpoints already queried by fingerprint for a given file_path
+_PHASH_CHECKED_SOURCES: dict[str, set[str]] = {}
 
 
-def get_cached_scene(video_path: str | Path) -> dict | None:
-    """Get cached scene matching the video path."""
+def extract_scene_number(scene: dict) -> str | None:
+    """Extract canonical number/code from a Stash-box scene dict.
+
+    Priority:
+    1. Explicit `code` field if non-empty (e.g., 'HEYZO-1587', '030421_442-paco', 'PT-123').
+    2. Western/Scene standard '{Studio}.{YY}.{MM}.{DD}' when both ASCII studio name
+       and release date (YYYY-MM-DD) are present (e.g., 'JapanHDV.22.06.13', 'PrivateSociety.22.12.20').
+    3. Fallback to `title` if present.
+    """
+    if not isinstance(scene, dict):
+        return None
+
+    code = scene.get("code")
+    if code and str(code).strip():
+        return str(code).strip()
+
+    studio_obj = scene.get("studio")
+    studio_name = studio_obj.get("name", "") if isinstance(studio_obj, dict) else ""
+    release_date = str(scene.get("date") or "").strip()
+
+    if studio_name and release_date:
+        clean_studio = re.sub(r"[^A-Za-z0-9]+", "", str(studio_name))
+        date_match = re.search(r"(\d{2})-(\d{2})-(\d{2})$", release_date)
+        if clean_studio and date_match:
+            yy, mm, dd = date_match.groups()
+            return f"{clean_studio}.{yy}.{mm}.{dd}"
+
+    title = scene.get("title")
+    if title and str(title).strip():
+        return str(title).strip()
+
+    return None
+
+
+def get_cached_scene(video_path: str | Path, source: str = "") -> dict | None:
+    """Get cached scene matching the video path (and optional source endpoint)."""
     try:
-        return _PHASH_SCENE_CACHE.get(str(Path(video_path).resolve()))
+        key = str(Path(video_path).resolve())
+        scene = _PHASH_SCENE_CACHE.get(key)
+        if scene is None:
+            return None
+        if source:
+            cached_source = _PHASH_SCENE_SOURCE_CACHE.get(key, "")
+            if cached_source and cached_source != source.lower():
+                return None
+        return scene
     except Exception:
         return None
 
 
-def set_cached_scene(video_path: str | Path, scene: dict) -> None:
+def set_cached_scene(video_path: str | Path, scene: dict, source: str = "") -> None:
     """Cache scene data for the video path."""
     try:
-        _PHASH_SCENE_CACHE[str(Path(video_path).resolve())] = scene
+        key = str(Path(video_path).resolve())
+        _PHASH_SCENE_CACHE[key] = scene
+        _PHASH_SCENE_SOURCE_CACHE[key] = source.lower() if source else ""
     except Exception:
         pass
+
+
+def mark_fingerprint_checked(video_path: str | Path, source: str) -> None:
+    """Record that an endpoint has already been queried by fingerprint for this file."""
+    if not source:
+        return
+    try:
+        key = str(Path(video_path).resolve())
+        _PHASH_CHECKED_SOURCES.setdefault(key, set()).add(source.lower())
+    except Exception:
+        pass
+
+
+def is_fingerprint_checked(video_path: str | Path, source: str) -> bool:
+    """Return True if this endpoint was already queried by fingerprint for this file."""
+    if not source:
+        return False
+    try:
+        key = str(Path(video_path).resolve())
+        return source.lower() in _PHASH_CHECKED_SOURCES.get(key, set())
+    except Exception:
+        return False
 
 
 def clear_cached_scenes() -> None:
     """Clear all cached scenes."""
     _PHASH_SCENE_CACHE.clear()
+    _PHASH_SCENE_SOURCE_CACHE.clear()
+    _PHASH_CHECKED_SOURCES.clear()
 
 
 FIND_BY_HASH_FULL_QUERY = """
@@ -231,7 +304,7 @@ async def resolve_number_by_phash(
     2. Hash priority: PHASH first, then OSHASH.
 
     If a matching scene is found, caches the full scene data in _PHASH_SCENE_CACHE for the crawler,
-    and returns the code (or title).
+    and returns the code (or formatted Studio.YY.MM.DD / title fallback).
     """
     path = Path(video_path)
     if not path.is_file():
@@ -256,9 +329,8 @@ async def resolve_number_by_phash(
     # Check cache first
     cached = get_cached_scene(path)
     if cached:
-        code = cached.get("code") or cached.get("title")
-        if code:
-            code_str = str(code).strip()
+        code_str = extract_scene_number(cached)
+        if code_str:
             elapsed = time.time() - start_time
             LogBuffer.log().write(f"\n 💡 [pHash识别] 命中本地指纹缓存番号: {code_str} (耗时 {elapsed:.2f}s)")
             return code_str
@@ -326,6 +398,8 @@ async def resolve_number_by_phash(
                         logger.warning(f"{ep_name} 指纹查询网络异常 HTTP {res.status_code}")
                         continue
 
+                    mark_fingerprint_checked(path, ep_name)
+
                     data = res.json().get("data", {})
                     nested = data.get("findScenesBySceneFingerprints", [])
                     if not isinstance(nested, list) or not nested:
@@ -352,10 +426,9 @@ async def resolve_number_by_phash(
                         matched_algo = "OSHASH"
 
                     if matched_scene:
-                        set_cached_scene(path, matched_scene)
-                        code = matched_scene.get("code") or matched_scene.get("title")
-                        if code:
-                            code_str = str(code).strip()
+                        set_cached_scene(path, matched_scene, source=ep_name)
+                        code_str = extract_scene_number(matched_scene)
+                        if code_str:
                             elapsed = time.time() - start_time
                             LogBuffer.log().write(
                                 f"\n 💡 [pHash识别] 命中 {ep_name} [{matched_algo}] 真实番号: {code_str} (耗时 {elapsed:.2f}s)"

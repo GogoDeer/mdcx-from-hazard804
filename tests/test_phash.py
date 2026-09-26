@@ -330,3 +330,73 @@ async def test_resolve_number_priority_javstash_then_stashdb(monkeypatch):
     assert len(queried_urls) == 2
     assert "javstash.org" in queried_urls[0]
     assert "stashdb.org" in queried_urls[1]
+
+
+@pytest.mark.asyncio
+async def test_resolve_number_by_phash_studio_date_format_and_source_isolation(monkeypatch):
+    """When StashDB scene has no code but has studio and date (e.g. JapanHDV), format as Studio.YY.MM.DD and isolate cache."""
+    from mdcx.utils.phash import (
+        clear_cached_scenes,
+        extract_scene_number,
+        get_cached_scene,
+        is_fingerprint_checked,
+        resolve_number_by_phash,
+    )
+
+    clear_cached_scenes()
+    monkeypatch.setattr("pathlib.Path.is_file", lambda p: True)
+    monkeypatch.setattr("mdcx.utils.phash.compute_video_phash", lambda p: "phash_val")
+    monkeypatch.setattr("oshash.oshash", lambda p: "oshash_val")
+
+    japanhdv_scene = {
+        "id": "1c294d43-d3c2-4be7-8b86-9a846a26bf4c",
+        "title": "Tubasa is our sexy cheating wife with huge G cup tits",
+        "code": None,
+        "date": "2022-06-13",
+        "studio": {"name": "Japan HDV"},
+    }
+    assert extract_scene_number(japanhdv_scene) == "JapanHDV.22.06.13"
+
+    class MockResponse:
+        def __init__(self, url):
+            self.url = url
+            self.status_code = 200
+
+        def json(self):
+            if "javstash.org" in self.url:
+                return {"data": {"findScenesBySceneFingerprints": [[], []]}}
+            return {
+                "data": {
+                    "findScenesBySceneFingerprints": [
+                        [],
+                        [japanhdv_scene],
+                    ]
+                }
+            }
+
+    class MockAsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
+        async def post(self, url, json, headers):
+            return MockResponse(url)
+
+    monkeypatch.setattr("httpx.AsyncClient", MockAsyncClient)
+
+    endpoints = [
+        {"name": "JavStash", "url": "https://javstash.org", "api_key": "k1"},
+        {"name": "StashDB", "url": "https://stashdb.org", "api_key": "k2"},
+    ]
+
+    res = await resolve_number_by_phash("JapanHDV.22.06.13.Tubasa.mp4", endpoints=endpoints)
+    assert res == "JapanHDV.22.06.13"
+    assert get_cached_scene("JapanHDV.22.06.13.Tubasa.mp4", source="stashdb") == japanhdv_scene
+    assert get_cached_scene("JapanHDV.22.06.13.Tubasa.mp4", source="javstash") is None
+    assert is_fingerprint_checked("JapanHDV.22.06.13.Tubasa.mp4", "javstash") is True
+    assert is_fingerprint_checked("JapanHDV.22.06.13.Tubasa.mp4", "stashdb") is True
