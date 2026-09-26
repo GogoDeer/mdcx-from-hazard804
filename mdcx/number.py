@@ -145,6 +145,22 @@ def extract_brand_number(raw_filename: str, filepath: str = "") -> str | None:
         if filepath and (m := re.search(r"(?i)heyzo[-_ ]*(\d{3,5})", filepath)):
             return f"HEYZO-{m.group(1)}"
 
+    # 9. GirlsDelta: girlsdelta[-_ ]*(\d{1,5}) or girlsdelta[-_ ]+([a-zA-Z]{2,20}(?:[-_ ]\d{1,2})?)
+    if any(k in full_text for k in ("girlsdelta", "girls_delta", "girls-delta", "girls delta")):
+        for target_str in (raw_filename, filepath):
+            if not target_str:
+                continue
+            if m := re.search(r"(?i)(?:girls[-_ ]*delta(?:\.com)?|gdl)[-_ ]*(\d{1,5})\b", target_str):
+                return f"GIRLSDELTA-{m.group(1)}"
+            if m := re.search(
+                r"(?i)(?:girls[-_ ]*delta(?:\.com)?|gdl)[-_ ]+([a-zA-Z]{2,20}(?:[-_ ][a-zA-Z]{2,20})?(?:[-_ ]\d{1,2})?)\b",
+                target_str,
+            ):
+                token = m.group(1).strip()
+                if token.lower() not in {"com", "mp4", "mkv", "wmv", "avi", "mov"}:
+                    norm_token = re.sub(r"[-_ ]+", "-", token).upper()
+                    return f"GIRLSDELTA-{norm_token}"
+
     return None
 
 
@@ -171,6 +187,8 @@ def is_uncensored(number: str) -> bool:
         "DRG-",
         "GACHI-",
         "heydouga",
+        "GIRLSDELTA-",
+        "GIRLSDELTA",
         "JAV-",
         "LAF-",
         "LAFBD-",

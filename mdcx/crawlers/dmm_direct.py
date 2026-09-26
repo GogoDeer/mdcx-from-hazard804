@@ -400,6 +400,7 @@ _UNCENSORED_PREFIXES = (
     "MIUM",
     "KIN8",
     "HEYDOUGA",
+    "GIRLSDELTA",
     "JAPANHDV",
 )
 

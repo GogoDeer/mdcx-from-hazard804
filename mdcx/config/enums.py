@@ -474,6 +474,7 @@ class Website(Enum):
     XCITY = "xcity"
     KIN8 = "kin8"
     HEYDOUGA = "heydouga"
+    GIRLSDELTA = "girlsdelta"
 
     OFFICIAL = "official"
 

@@ -513,6 +513,7 @@ class ManualConfig:
         "theporndb": Website.THEPORNDB,
         "javstash": Website.JAVSTASH,  # [JavStash]
         "prestige": Website.PRESTIGE,
+        "girlsdelta": Website.GIRLSDELTA,
     }
     CHAR_LIST = [
         "[高清] (中文字幕)",

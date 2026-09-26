@@ -101,6 +101,8 @@ def _should_search_amazon(result: CrawlersResult) -> bool:
 
 
 def _get_poster_copy_policy(result: CrawlersResult, download_files: list[DownloadableFile]) -> bool:
+    if result.image_download and result.poster and result.poster != result.thumb and "girlsdelta.com" in result.poster:
+        return False
     ignore_file = POSTER_COPY_POLICY_MAP.get(result.scraping_type)
     return bool(ignore_file and ignore_file in download_files)
 

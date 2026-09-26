@@ -10,6 +10,7 @@ from ..number import get_number_letters
 from .base import BaseCrawler, Context, CrawlerData, CrawlerException, get_year
 from .dahlia import DahliaCrawler
 from .faleno import FalenoCrawler
+from .girlsdelta import GirlsDeltaCrawler, is_girlsdelta_number
 from .heydouga import HeydougaCrawler, is_heydouga_number
 from .kin8 import Kin8Crawler
 from .official_uncensored import crawl_uncensored_official
@@ -22,6 +23,8 @@ OFFICIAL_CRAWLER_BY_PREFIX = {
     "KIN8": Kin8Crawler,
     "KIN8TENGOKU": Kin8Crawler,
     "HEYDOUGA": HeydougaCrawler,
+    "GIRLSDELTA": GirlsDeltaCrawler,
+    "GDL": GirlsDeltaCrawler,
 }
 
 DIRECTOR_PLACEHOLDER_CHARS = frozenset("-—－ー―‐~～·•. ")
@@ -157,6 +160,19 @@ class OfficialCrawler(BaseCrawler):
                 raise child_response.debug_info.error
             if child_response.data is None:
                 raise CrawlerException("Heydouga 官方子爬虫未返回数据")
+            child_response.data.source = self.site().value
+            return child_response.data
+
+        # GirlsDelta 官方爬虫智能委托（支持 GIRLSDELTA-1703、GirlsDelta-NATSUNA 等格式）
+        if is_girlsdelta_number(number) or is_girlsdelta_number(str(ctx.input.file_path or "")):
+            child_response = await GirlsDeltaCrawler(client=self.async_client).run(ctx.input)
+            ctx.debug_info.logs.extend(child_response.debug_info.logs)
+            ctx.debug_info.search_urls = child_response.debug_info.search_urls
+            ctx.debug_info.detail_urls = child_response.debug_info.detail_urls
+            if child_response.debug_info.error is not None:
+                raise child_response.debug_info.error
+            if child_response.data is None:
+                raise CrawlerException("GirlsDelta 官方子爬虫未返回数据")
             child_response.data.source = self.site().value
             return child_response.data
 
