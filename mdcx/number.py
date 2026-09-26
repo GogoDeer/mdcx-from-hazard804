@@ -318,6 +318,8 @@ def get_number_letters(number: str) -> str:
         return "MCB3D"
     if matches := re.findall(r"(H4610|C0930|H0930)-[A-Z]+\d{4,}", number_upper):
         return matches[0]
+    if r := re.match(r"([A-Z]{1,4}\d{2})[-_]\d{2,4}$", number_upper):
+        return r[1]
     result = re.search(r"(\d*[A-Za-z]+)\d*", number)
     return result[1] if result else "未知车牌"
 
@@ -473,8 +475,8 @@ def get_file_number(filepath: str, escape_string_list: list[str]) -> str:
             r := re.search(r"(?<![A-Z0-9])\d{2,}[-_]\d{2,}", filename)
         )  # 111111-000 111111_000（纯数字段，避免把 T38-041 截成 38-041，议题 #92）
         or (r := re.search(r"(?<![A-Z0-9])\d{3,}-[A-Z]{3,}", filename))  # 111111-MMMM
-        or (r := re.search(r"(?<![A-Z0-9])[A-Z]\d{2}[-_]\d{2,4}(?![A-Z0-9])", filename))
-        # T38-041（单字母 + 两位数字厂牌；文件名带标题时也能命中，议题 #95；
+        or (r := re.search(r"(?<![A-Z0-9])[A-Z]{1,4}\d{2}[-_]\d{2,4}(?![A-Z0-9])", filename))
+        # T38-041 / BHD18-78（1~4 字母 + 两位数字厂牌；文件名带标题时也能命中，议题 #95；
         # 收窄为两位头数字以避开 H264-1080/x264-10 一类编码串）
     ):
         file_number = r.group()

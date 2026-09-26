@@ -129,6 +129,8 @@ def test_get_file_number_normalizes_dmm_preorder_9_prefix(raw_number: str, expec
             r"D:/test/T38-041__田舎に帰省した日焼け姪っ子姉妹 原陽菜乃·南日菜乃_【原阳菜乃】__[].mp4",
             "T38-041",
         ),
+        # 多字母+两位数字厂牌（如 Bauhaus 写真 DVD BHD18-78），避免被拆成 BHD-18 + cd78
+        (r"D:/test/BHD18-78/BHD18-78.mp4", "BHD18-78"),
     ],
 )
 def test_get_file_number_keeps_non_suren_prefixes(raw_number: str, expected_number: str):

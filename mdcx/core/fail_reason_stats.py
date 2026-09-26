@@ -33,6 +33,7 @@ _REASON_RULES: list[tuple[str, str]] = [
     ("blocked", "被拦截"),
     ("Cloudflare", "被拦截"),
     ("403", "被拦截"),
+    ("版权限制", "被拦截"),
     ("429", "请求过快被限流"),
     ("404", "站点未收录"),
     ("解析失败", "解析失败"),
@@ -48,9 +49,14 @@ def classify_fail_reason(reason: str) -> str:
     防御：输入已是归一类别名（如二次聚合场景）时直接返回自身。
     """
     text = str(reason or "")
+    # 避免“版权限制”（版+权限+制）跨词误命中“权限”规则
+    text_no_copyright = text.replace("版权限制", "")
     lowered = text.lower()
     for keyword, label in _REASON_RULES:
-        if keyword in text or keyword.lower() in lowered:
+        target_text = text_no_copyright if keyword == "权限" else text
+        if keyword in target_text or keyword.lower() in lowered:
+            if keyword == "权限" and keyword not in target_text:
+                continue
             return label
     if text in {label for _keyword, label in _REASON_RULES}:
         return text

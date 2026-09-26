@@ -20,6 +20,14 @@ def test_classify_covers_common_failure_texts():
     assert classify_fail_reason("详情响应解析失败") == "解析失败"
     assert classify_fail_reason("创建文件夹失败！目标盘可能限制文件夹名的长度或字符！") == "目录名无效或过长"
     assert classify_fail_reason("创建文件夹失败！可能是目录名过长！") == "目录名无效或过长"
+    # “版权限制”（版+权限+制）不能跨词误命中“权限不足”
+    assert (
+        classify_fail_reason(
+            "所有刮削来源均未返回可用数据。javdb_app: 未找到匹配的影片；javdb_api: Javdb 镜像站版权限制，禁止日本 IP 访问！"
+        )
+        == "站点未收录"
+    )
+    assert classify_fail_reason("Javdb 镜像站版权限制，禁止日本 IP 访问！") == "被拦截"
     assert classify_fail_reason("完全没见过的错误形态") == "其他错误"
     assert classify_fail_reason("") == "其他错误"
 
