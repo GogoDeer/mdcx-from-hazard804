@@ -514,6 +514,7 @@ class ManualConfig:
         "javstash": Website.JAVSTASH,  # [JavStash]
         "prestige": Website.PRESTIGE,
         "girlsdelta": Website.GIRLSDELTA,
+        "nyoshin": Website.NYOSHIN,
     }
     CHAR_LIST = [
         "[高清] (中文字幕)",

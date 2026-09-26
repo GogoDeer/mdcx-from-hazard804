@@ -161,6 +161,19 @@ def extract_brand_number(raw_filename: str, filepath: str = "") -> str | None:
                     norm_token = re.sub(r"[-_ ]+", "-", token).upper()
                     return f"GIRLSDELTA-{norm_token}"
 
+    # 10. Nyoshin (女体のしんぴ): nyoshin[-_ ]*n?(\d{3,5}) or n(\d{3,5}) under 女体/nyoshin context
+    if any(k in full_text for k in ("nyoshin", "女体のしんぴ", "女体")):
+        for target_str in (raw_filename, filepath):
+            if not target_str:
+                continue
+            if m := re.search(r"(?i)nyoshin(?:\.com)?[-_ ]*n?(\d{3,5})\b", target_str):
+                return f"NYOSHIN-n{m.group(1)}"
+        for target_str in (raw_filename, filepath):
+            if not target_str:
+                continue
+            if m := re.search(r"(?i)(?<![a-zA-Z0-9])n(\d{3,5})(?!\d)", target_str):
+                return f"NYOSHIN-n{m.group(1)}"
+
     return None
 
 
@@ -189,6 +202,8 @@ def is_uncensored(number: str) -> bool:
         "heydouga",
         "GIRLSDELTA-",
         "GIRLSDELTA",
+        "NYOSHIN-",
+        "NYOSHIN",
         "JAV-",
         "LAF-",
         "LAFBD-",
@@ -285,6 +300,8 @@ def get_number_letters(number: str) -> str:
         return "MYWIFE"
     if number_upper.startswith("KIN8"):
         return "KIN8"
+    if number_upper.startswith("NYOSHIN"):
+        return "NYOSHIN"
     if number_upper.startswith("S2M"):
         return "S2M"
     if number_upper.startswith("T28"):

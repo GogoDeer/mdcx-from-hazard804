@@ -419,7 +419,7 @@ async def write_nfo(
         orig_file_path = getattr(data, "originalfilepath", "")
         if (not orig_file_name or not orig_file_path) and await aiofiles.os.path.exists(nfo_file):
             try:
-                existing_data, _ = await get_nfo_data(file_info.file_path, data.number)
+                existing_data, _ = await get_nfo_data(file_info.file_path, data.number, nfo_path=nfo_file)
                 if existing_data is not None:
                     if not orig_file_name and getattr(existing_data, "originalfilename", ""):
                         orig_file_name = existing_data.originalfilename
@@ -431,7 +431,12 @@ async def write_nfo(
         if not orig_file_name:
             orig_file_name = file_info.file_name or ""
         if not orig_file_path:
-            orig_file_path = str(file_info.file_path) if file_info.file_path and str(file_info.file_path) != "." else ""
+            raw_file_path = (
+                file_info.ori_file_path
+                if getattr(file_info, "ori_file_path", None) and str(file_info.ori_file_path) != "."
+                else file_info.file_path
+            )
+            orig_file_path = str(raw_file_path) if raw_file_path and str(raw_file_path) != "." else ""
 
         if orig_file_name:
             write_text_element(code, "originalfilename", orig_file_name)

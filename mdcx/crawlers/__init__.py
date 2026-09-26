@@ -46,6 +46,7 @@ from .mgstage import MgstageCrawler
 from .missav import MissavCrawler
 from .missav_api import MissavApiCrawler
 from .mywife import MywifeCrawler
+from .nyoshin import NyoshinCrawler
 from .official import OfficialCrawler
 from .prestige import PrestigeCrawler
 from .r18dev import R18devCrawler
@@ -95,6 +96,7 @@ register_crawler(JavhubCrawler)
 register_crawler(Kin8Crawler)
 register_crawler(HeydougaCrawler)
 register_crawler(GirlsDeltaCrawler)
+register_crawler(NyoshinCrawler)
 
 # 模块名以数字开头（7mmtv），无法用常规 import 语法，走 importlib
 from importlib import import_module as _import_module  # noqa: E402

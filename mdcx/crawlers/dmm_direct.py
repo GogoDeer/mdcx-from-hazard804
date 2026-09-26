@@ -401,6 +401,7 @@ _UNCENSORED_PREFIXES = (
     "KIN8",
     "HEYDOUGA",
     "GIRLSDELTA",
+    "NYOSHIN",
     "JAPANHDV",
 )
 

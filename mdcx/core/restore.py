@@ -331,9 +331,22 @@ def restore_scraped_movie(
     # 若未找到 Manifest，构建回退启发式 Manifest
     if not manifest and show_data and hasattr(show_data, "file_info"):
         fi = show_data.file_info
-        orig_dir = fi.folder_path
-        orig_name = fi.file_name + fi.file_ex
-        orig_file = orig_dir / orig_name
+        nfo_orig_path = getattr(show_data.data, "originalfilepath", "") if getattr(show_data, "data", None) else ""
+        nfo_orig_name = getattr(show_data.data, "originalfilename", "") if getattr(show_data, "data", None) else ""
+        if nfo_orig_path and nfo_orig_path != ".":
+            orig_file = Path(nfo_orig_path)
+            orig_dir = orig_file.parent
+        elif getattr(fi, "ori_file_path", None) and str(fi.ori_file_path) != ".":
+            orig_file = fi.ori_file_path
+            orig_dir = orig_file.parent
+        else:
+            orig_dir = fi.folder_path
+            base_name = nfo_orig_name if nfo_orig_name else fi.file_name
+            if base_name.lower().endswith(fi.file_ex.lower()):
+                orig_name = base_name
+            else:
+                orig_name = base_name + fi.file_ex
+            orig_file = orig_dir / orig_name
         current_file = fi.file_path if fi.file_path and fi.file_path.exists() else (file_path or orig_file)
         manifest = ScrapeManifest(
             original_file_path=orig_file,

@@ -1116,7 +1116,11 @@ class Scraper:
         # 已存在该番号数据时直接使用该数据
         if pre_data and enable_shared_json:
             pre_res = pre_data.data
+            own_orig_name = res.originalfilename
+            own_orig_path = res.originalfilepath
             res = update(pre_res, file_info)
+            res.originalfilename = own_orig_name
+            res.originalfilepath = own_orig_path
 
             tags = pre_res.tag.split(",")
             tags = [
@@ -1266,9 +1270,20 @@ class Scraper:
         # 判断输出文件夹和文件是否已存在，如无则创建输出文件夹
         other = OtherInfo.empty()
         folder_existed = await aiofiles.os.path.exists(folder_new_path)
+        prior_manifest = ScrapeHistoryRegistry.get(file_path)
+        manifest_orig_file = file_path
+        manifest_orig_folder = folder_old_path
+        if prior_manifest and prior_manifest.original_file_path and str(prior_manifest.original_file_path) != ".":
+            manifest_orig_file = prior_manifest.original_file_path
+            manifest_orig_folder = prior_manifest.original_folder_path or prior_manifest.original_file_path.parent
+        elif res.originalfilepath and res.originalfilepath != ".":
+            orig_p = Path(res.originalfilepath)
+            manifest_orig_file = orig_p
+            manifest_orig_folder = orig_p.parent
+
         manifest = ScrapeManifest(
-            original_file_path=file_path,
-            original_folder_path=folder_old_path,
+            original_file_path=manifest_orig_file,
+            original_folder_path=manifest_orig_folder,
             new_file_path=file_new_path,
             new_folder_path=folder_new_path,
             link_mode=int(getattr(manager.config, "soft_link", 0)),

@@ -144,6 +144,9 @@ async def creat_folder(
 
 
 async def move_movie(other: OtherInfo, file_info: FileInfo, file_path: Path, file_new_path: Path) -> bool:
+    if not file_info.ori_file_path or file_info.ori_file_path == Path():
+        file_info.ori_file_path = file_path
+
     # 明确不需要移动的，直接返回
     if other.dont_move_movie:
         LogBuffer.log().write(f"\n 🍀 Movie done! \n 🙉 [Movie] {file_path}")
@@ -815,6 +818,7 @@ async def get_file_info_v2(file_path: Path, copy_sub: bool = True) -> FileInfo:
         website_name=optional_data.get("website_name", ""),
         definition="",
         codec="",
+        ori_file_path=Path(file_path),
     )
 
 

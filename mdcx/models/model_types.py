@@ -43,6 +43,8 @@ class FileInfo:
 
     # 读模式下被 NFO 番号覆盖后的实际番号（共享番号注册键之一，供释放方使用）
     shared_number: str | None = None
+    # 移动文件前的原始文件路径（防止 move_movie 就地覆盖 file_path 后丢失原始路径）
+    ori_file_path: Path = field(default_factory=Path)
 
     @property
     def optional_file_path(self) -> Path | None:
@@ -117,6 +119,7 @@ class FileInfo:
             youma="",
             definition="",
             codec="",
+            ori_file_path=Path(),
         )
 
 

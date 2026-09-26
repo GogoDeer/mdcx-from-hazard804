@@ -170,6 +170,9 @@ def classify_scrape_task(task_input: CrawlTask, config: "Config", use_fixed_type
     if "mywife" in file_path_str:
         return ScrapeClassification(FixedScrapingType.YOUMA, "auto", website=Website.MYWIFE)
 
+    if file_number.upper().startswith("NYOSHIN") or "nyoshin" in file_path_str:
+        return ScrapeClassification(FixedScrapingType.WUMA, "auto", website=Website.NYOSHIN, mosaic="无码")
+
     if "FC2" in file_number.upper():
         file_number_1 = re.search(r"\d{5,}", file_number)
         if file_number_1:

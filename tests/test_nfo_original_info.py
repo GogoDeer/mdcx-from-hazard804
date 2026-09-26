@@ -119,3 +119,57 @@ def test_merge_nfo_fields_inherits_original_info():
     merged = merge_nfo_fields(scraped, existing_nfo, NfoMergeStrategy.PREFER_NFO)
     assert merged.originalfilename == "ORIG_ABC.mp4"
     assert merged.originalfilepath == "/path/to/ORIG_ABC.mp4"
+
+
+@pytest.mark.asyncio
+async def test_move_movie_then_write_nfo_records_original_source_path(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    from mdcx.core.file import move_movie
+    from mdcx.models.model_types import OtherInfo
+
+    monkeypatch.setattr(nfo_module.manager.config, "download_files", [])
+    monkeypatch.setattr(nfo_module.manager.config, "keep_files", [])
+    monkeypatch.setattr(nfo_module.manager.config, "outline_format", [])
+    monkeypatch.setattr(nfo_module.manager.config, "main_mode", 1)
+    monkeypatch.setattr(nfo_module.manager.config, "soft_link", 0)
+    monkeypatch.setattr(nfo_module.manager.config, "naming_media", "number title")
+    monkeypatch.setattr(nfo_module.manager.config, "update_titletemplate", "number title")
+    monkeypatch.setattr(nfo_module.manager.config, "nfo_include_new", [])
+    monkeypatch.setattr(nfo_module.manager.config, "nfo_tagline", "")
+    monkeypatch.setattr(nfo_module.manager.config, "actor_no_name", "佚名")
+    monkeypatch.setattr(nfo_module, "render_name", lambda *args, **kwargs: _RenderedTitle("超アナルアングル"))
+
+    input_dir = tmp_path / "input" / "女体"
+    output_dir = tmp_path / "output" / "かな" / "NYOSHIN-n1980"
+    input_dir.mkdir(parents=True)
+    output_dir.mkdir(parents=True)
+
+    src_video = input_dir / "nyoshin_n1980.wmv"
+    src_video.write_bytes(b"video_bytes")
+    dst_video = output_dir / "NYOSHIN-n1980.wmv"
+
+    file_info = FileInfo.empty()
+    file_info.number = "NYOSHIN-n1980"
+    file_info.file_name = "nyoshin_n1980"
+    file_info.file_ex = ".wmv"
+    file_info.file_path = src_video
+    file_info.ori_file_path = src_video
+    file_info.folder_path = input_dir
+
+    other = OtherInfo.empty()
+    moved = await move_movie(other, file_info, src_video, dst_video)
+    assert moved is True
+    assert file_info.file_path == dst_video
+    assert file_info.ori_file_path == src_video
+
+    data = CrawlersResult.empty()
+    data.number = "NYOSHIN-n1980"
+    data.title = "超アナルアングル"
+
+    nfo_file = output_dir / "NYOSHIN-n1980.nfo"
+    ok = await nfo_module.write_nfo(file_info, data, nfo_file, output_dir, update=True)
+    assert ok is True
+
+    content = nfo_file.read_text(encoding="utf-8")
+    assert "<originalfilename>nyoshin_n1980</originalfilename>" in content
+    assert f"<originalfilepath>{str(src_video)}</originalfilepath>" in content
+    assert f"<originalfilepath>{str(dst_video)}</originalfilepath>" not in content

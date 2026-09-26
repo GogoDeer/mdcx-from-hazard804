@@ -475,6 +475,7 @@ class Website(Enum):
     KIN8 = "kin8"
     HEYDOUGA = "heydouga"
     GIRLSDELTA = "girlsdelta"
+    NYOSHIN = "nyoshin"
 
     OFFICIAL = "official"
 

@@ -13,6 +13,7 @@ from .faleno import FalenoCrawler
 from .girlsdelta import GirlsDeltaCrawler, is_girlsdelta_number
 from .heydouga import HeydougaCrawler, is_heydouga_number
 from .kin8 import Kin8Crawler
+from .nyoshin import NyoshinCrawler, is_nyoshin_number
 from .official_uncensored import crawl_uncensored_official
 from .prestige import PrestigeCrawler
 
@@ -25,6 +26,7 @@ OFFICIAL_CRAWLER_BY_PREFIX = {
     "HEYDOUGA": HeydougaCrawler,
     "GIRLSDELTA": GirlsDeltaCrawler,
     "GDL": GirlsDeltaCrawler,
+    "NYOSHIN": NyoshinCrawler,
 }
 
 DIRECTOR_PLACEHOLDER_CHARS = frozenset("-—－ー―‐~～·•. ")
@@ -173,6 +175,19 @@ class OfficialCrawler(BaseCrawler):
                 raise child_response.debug_info.error
             if child_response.data is None:
                 raise CrawlerException("GirlsDelta 官方子爬虫未返回数据")
+            child_response.data.source = self.site().value
+            return child_response.data
+
+        # Nyoshin (女体のしんぴ) 官方爬虫智能委托（支持 NYOSHIN-n1980、nyoshin_n1980 等格式）
+        if is_nyoshin_number(number) or is_nyoshin_number(str(ctx.input.file_path or "")):
+            child_response = await NyoshinCrawler(client=self.async_client).run(ctx.input)
+            ctx.debug_info.logs.extend(child_response.debug_info.logs)
+            ctx.debug_info.search_urls = child_response.debug_info.search_urls
+            ctx.debug_info.detail_urls = child_response.debug_info.detail_urls
+            if child_response.debug_info.error is not None:
+                raise child_response.debug_info.error
+            if child_response.data is None:
+                raise CrawlerException("Nyoshin 官方子爬虫未返回数据")
             child_response.data.source = self.site().value
             return child_response.data
 
