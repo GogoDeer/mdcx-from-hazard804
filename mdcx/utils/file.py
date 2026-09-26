@@ -260,9 +260,10 @@ def check_pic_sync(p: str):
 def open_file_thread(p: Path, is_dir: bool) -> None:
     if IS_WINDOWS:
         if is_dir:
-            subprocess.Popen(["explorer", "/select,", str(p)])
+            # explorer.exe 将未加引号的逗号视为参数分隔符，且 subprocess.list2cmdline 对不含空格但含逗号的路径不会自动加引号
+            subprocess.Popen(f'explorer /select,"{p}"')
         else:
-            subprocess.Popen(["explorer", str(p)])
+            os.startfile(str(p))
     elif IS_MAC:
         if is_dir:
             if p.is_symlink():
